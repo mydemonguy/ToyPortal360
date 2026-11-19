@@ -4,6 +4,14 @@ A plugin for modded Xbox 360 consoles that fakes a **Skylanders Portal of Power*
 
 > **Status: working on a real Xbox 360 with Peer Pressure and LEGO Dimensions.** Figures are created, placed on the virtual Toy Pad and played with. Skylanders, Disney Infinity and the DashLaunch build use the same code but haven't been tried on a console yet; reports are welcome in Issues.
 
+## Screenshots
+
+Photos of a real Xbox 360 running LEGO Dimensions under Peer Pressure, with three virtual figures on the Toy Pad. The menu opens over the game with LB + RB + Back.
+
+| Main menu: what's on the pad | More options | Moving a figure between pads |
+| --- | --- | --- |
+| ![Toy Portal 360 main menu showing Gandalf, Batman and Wyldstyle on the pad](docs/screenshots/menu-main.jpg) | ![More options: create a figure, move a figure, turn emulation off](docs/screenshots/menu-more.jpg) | ![Move figure: Gandalf on the left pad, 1 of 3](docs/screenshots/menu-move.jpg) |
+
 ## Download and quick start (Peer Pressure)
 
 **[Download ToyPortal360-PeerPressure.zip](downloads/ToyPortal360-PeerPressure.zip?raw=true)**: the plugin, a ready-made `sideload.ini` for each game, and `HOW-TO-INSTALL.txt`.
