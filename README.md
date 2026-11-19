@@ -2,11 +2,17 @@
 
 A plugin for modded Xbox 360 consoles that fakes a **Skylanders Portal of Power**, a **LEGO Dimensions Toy Pad** or a **Disney Infinity Base**. You use figure files instead of the real hardware and toys, and pick them from an on-screen menu while you play. It works like the portal, toy pad and Infinity Base managers built into RPCS3.
 
-> **Status: built, not yet run on a real console.** Two ready-built files come with the source:
-> - `ToyPortal360.xex` for RGH/JTAG consoles with DashLaunch
-> - `ToyPortal360-PeerPressure.xex` for the Peer Pressure softmod
->
-> Nobody has tried either on hardware yet. The whole plugin, including the hooking, menus and saving, does run end to end in a PowerPC test harness against a fake Xbox runtime (see [Testing](#testing)). Xenia-based emulators reach all three devices through the same system functions this plugin hooks (see [What's known and what isn't](#whats-known-and-what-isnt)). The plugin can log all portal traffic, so a first console run will show anything that needs fixing.
+> **Status: working on a real Xbox 360 with Peer Pressure and LEGO Dimensions.** Figures are created, placed on the virtual Toy Pad and played with. Skylanders, Disney Infinity and the DashLaunch build use the same code but haven't been tried on a console yet; reports are welcome in Issues.
+
+## Download and quick start (Peer Pressure)
+
+**[Download ToyPortal360-PeerPressure.zip](downloads/ToyPortal360-PeerPressure.zip?raw=true)**: the plugin, a ready-made `sideload.ini` for each game, and `HOW-TO-INSTALL.txt`.
+
+1. Copy `ToyPortal360-PeerPressure.xex` and your game's `sideload.ini` (from `NextToGame/<game>/`) into the folder that holds the game's files. For a Games on Demand copy that's its `00007000` folder, for example `Hdd1:\Content\0000000000000000\LEGO Dimensions [5752084B]\00007000\`.
+2. **Turn the console fully off and on, then start the game first.** Peer Pressure only sideloads into the first game started after power-on.
+3. When "Toy Portal 360 ready" pops up, hold **LB + RB + Back** in the game for the menu. **More... → Create new figure**, type a name (for example `gandalf`), then **Place it** on a pad spot.
+
+Figures are saved in `Hdd1:\ToyPortal\Dimensions\` (and `Skylanders\`, `Infinity\`), and the game saves progress into them. Don't edit `sideload.ini`: Peer Pressure ignored longer configs on the test console. Full details are in [Installing on Peer Pressure](#installing-on-peer-pressure).
 
 ## How it works
 
