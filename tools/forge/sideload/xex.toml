@@ -1,0 +1,13 @@
+# xex-link manifest for the Peer Pressure sideload build of ToyPortal360.
+#
+# A title DLL (Peer Pressure only sideloads title DLLs), loaded into the
+# game's address range with 64 KB pages. Title images must sit in
+# 0x80000000-0x8BFFFFFF: 0x8C000000-0x8FFFFFFF is the encrypted image region,
+# which the loader does not use for ordinary images. 0x8A000000 is far above
+# where game executables load (0x82000000). If you change it, regenerate
+# link.x with `xex-link link-script`.
+load_address = 0x8a000000
+module_flags = ["TITLE", "DLL"]
+version = "1.0.0.0"
+# No TLS header: that is for the game's own executable.
+tls_slots = 0

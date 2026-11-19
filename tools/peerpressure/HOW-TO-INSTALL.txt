@@ -1,0 +1,80 @@
+ToyPortal360 for Peer Pressure - setup
+=====================================
+
+Lets LEGO Dimensions (and, untested so far, Skylanders and Disney Infinity)
+on an Xbox 360 running Peer Pressure use virtual figures instead of a real
+Toy Pad or portal. Tested on a console with LEGO Dimensions (Games on Demand,
+title ID 5752084B).
+
+What you need
+-------------
+- An Xbox 360 with Peer Pressure, in its softmod (hacked) mode.
+- A way to copy files to the console's hard drive (FTP or a USB stick and
+  Aurora's file manager).
+- Your game installed on the hard drive (Games on Demand or extracted).
+
+1. Copy the plugin next to the game
+-----------------------------------
+Find the folder that holds the game's files. For a Games on Demand copy it
+is the 00007000 folder inside the game's content folder, for example:
+
+  Hdd1:\Content\0000000000000000\LEGO Dimensions [5752084B]\00007000\
+
+(next to the long file such as 0E8BB02F8815451809DE and its .data folder).
+For an extracted game it is the folder that holds default.xex.
+
+Copy into that folder:
+  - ToyPortal360-PeerPressure.xex
+  - sideload.ini from NextToGame\<your game>\
+
+Both files must sit directly in that folder, with exactly these names.
+Do not edit sideload.ini: Peer Pressure ignored config files longer than
+512 bytes and ones that did not start with a ; comment line.
+
+2. Start the game the right way
+-------------------------------
+Peer Pressure only loads the plugin on the FIRST game started after the
+console is switched on. So every time:
+
+  1. Turn the console fully off (hold the power button until it shuts down,
+     or unplug it for 10 seconds) and turn it back on.
+  2. Start the game straight away, before any other game or app.
+
+When the game looks for the Toy Pad you get a pop-up:
+  "Toy Portal 360 ready - hold LB+RB+Back for the menu"
+
+3. Use the menu
+---------------
+In the game, hold LB + RB + Back to open the menu.
+
+  Place     put one of your saved figures on the pad
+  Remove    take a figure off
+  More      Create a new figure, Move a figure to another pad spot,
+            or switch emulation off (to use a real Toy Pad again)
+
+To make a figure: More > Create, type part of its name (for example
+gandalf or batman), pick it from the list, then Place it and choose a
+pad spot (left, centre or right).
+
+Where figures are kept
+----------------------
+  Hdd1:\ToyPortal\Dimensions\   LEGO Dimensions (.bin, 180 bytes)
+  Hdd1:\ToyPortal\Skylanders\   Skylanders (.sky / .bin, 1024 bytes)
+  Hdd1:\ToyPortal\Infinity\     Disney Infinity (.bin, 320 bytes)
+
+The game saves progress and upgrades into these files. You can also copy in
+figure dumps made by other tools (for example RPCS3's) and Place them.
+
+Settings are in Hdd1:\ToyPortal\toyportal.ini (made on first run). Set
+log = 1 there to write Hdd1:\ToyPortal\log.txt if something goes wrong.
+
+If nothing happens
+------------------
+- No pop-up: restart the console fully and start the game first. Check that
+  both files are in the game's folder and named exactly as above.
+- Other games: use the sideload.ini from NextToGame\<that game>\. Its title
+  ID must match the game (press Guide in the game or check Aurora's game
+  details). Skylanders and Disney Infinity have not been tried on a console.
+- Disc copies have no game folder to copy into: use the SideLoading folder
+  instead (copy its .ini files and the .xex to Hdd1:\PeerPressure\SideLoading\).
+  That route has not been confirmed on a console yet.

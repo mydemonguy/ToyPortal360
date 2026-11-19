@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ImageXex settings: mark the image as a system DLL so DashLaunch can load it
+     as a plugin that stays resident across game launches. -->
+<xex>
+  <sysdll/>
+  <format>
+    <compressed/>
+  </format>
+</xex>

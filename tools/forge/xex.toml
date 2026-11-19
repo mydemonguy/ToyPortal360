@@ -1,0 +1,8 @@
+# xex-link manifest for the ToyPortal360 DashLaunch plugin (Xenon Forge build).
+#
+# A DLL in the system modules' range (0x90000000-0x9FFFFFFF, 4 KB pages).
+# The address only has to differ from other plugins and system modules;
+# change it (and rebuild) if another plugin uses 0x9B000000.
+load_address = 0x9b000000
+module_flags = ["DLL"]
+version = "1.0.0.0"

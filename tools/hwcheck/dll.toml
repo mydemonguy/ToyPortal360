@@ -1,0 +1,4 @@
+load_address = 0x8a000000
+module_flags = ["TITLE", "DLL"]
+version = "1.0.0.0"
+tls_slots = 0

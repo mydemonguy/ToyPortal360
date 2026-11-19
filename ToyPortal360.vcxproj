@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Visual Studio 2010 + Xbox 360 SDK project for the ToyPortal360 DashLaunch plugin.
+     Builds a DLL and converts it to ToyPortal360.xex with ImageXex (see xex.xml). -->
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|Xbox 360">
+      <Configuration>Release</Configuration>
+      <Platform>Xbox 360</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Xbox 360">
+      <Configuration>Debug</Configuration>
+      <Platform>Xbox 360</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{DDADE523-D21D-4037-97F9-D312A2A71914}</ProjectGuid>
+    <RootNamespace>ToyPortal360</RootNamespace>
+    <Keyword>Xbox360Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Xbox 360'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)obj\$(Configuration)\</IntDir>
+    <TargetName>ToyPortal360</TargetName>
+    <ImageXexOutput>$(OutDir)ToyPortal360.xex</ImageXexOutput>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PreprocessorDefinitions>_XBOX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ExceptionHandling>false</ExceptionHandling>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <BufferSecurityCheck>false</BufferSecurityCheck>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>xapilib.lib;xboxkrnl.lib;xnet.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+    <ImageXex>
+      <ConfigurationFile>xex.xml</ConfigurationFile>
+    </ImageXex>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Xbox 360'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Xbox 360'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\core\dimensions_toypad.cpp" />
+    <ClCompile Include="src\core\figure_db.cpp" />
+    <ClCompile Include="src\core\infinity_base.cpp" />
+    <ClCompile Include="src\core\skylander_portal.cpp" />
+    <ClCompile Include="src\core\tiny_crypto.cpp" />
+    <ClCompile Include="src\core\toy_router.cpp" />
+    <ClCompile Include="src\xbox\hooks.cpp" />
+    <ClCompile Include="src\xbox\log.cpp" />
+    <ClCompile Include="src\xbox\menu.cpp" />
+    <ClCompile Include="src\xbox\plugin.cpp" />
+    <ClCompile Include="src\xbox\storage.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\core\bytes.h" />
+    <ClInclude Include="src\core\dimensions_toypad.h" />
+    <ClInclude Include="src\core\figure_db.h" />
+    <ClInclude Include="src\core\infinity_base.h" />
+    <ClInclude Include="src\core\skylander_portal.h" />
+    <ClInclude Include="src\core\tiny_crypto.h" />
+    <ClInclude Include="src\core\toy_router.h" />
+    <ClInclude Include="src\xbox\kernel.h" />
+    <ClInclude Include="src\xbox\plugin.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="xex.xml" />
+    <None Include="src\core\names_skylanders.inc" />
+    <None Include="src\core\names_dimensions.inc" />
+    <None Include="src\core\names_dimensions_tokens.inc" />
+    <None Include="src\core\names_infinity.inc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>
