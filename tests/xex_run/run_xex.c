@@ -14,6 +14,7 @@
  * image uses 64-bit instructions.
  */
 #define _GNU_SOURCE
+#include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -226,7 +227,11 @@ static u32 k_MmIsAddressValid(void* p) { return p != NULL; }
 
 static void* k_RtlImageXexHeaderField(void* base, u32 field)
 {
-	return field == 0x000103FF ? base : NULL; /* the fake game keeps its imports at XexHeaderBase */
+	if (field != 0x000103FF)
+		return NULL;
+	/* the fake game keeps its imports at XexHeaderBase, or 16 bytes in when the
+	 * header starts with a real "XEX2" signature (a game's extra modules) */
+	return *(u32*)base == 0x58455832 ? (u8*)base + 16 : base;
 }
 
 /* XAM functions the plugin resolves at run time. */
@@ -300,6 +305,8 @@ static u32 x_WaitForSingleObject(Handle* h, u32 ms)
 		h->kind = 0; /* joined; CloseHandle must not detach */
 	return 0;
 }
+static __thread u32 g_last_error;
+static u32 x_GetLastError(void) { return g_last_error; }
 static void* x_CreateFileA(const char* p, u32 access, u32 share, void* sa, u32 disp, u32 attr, void* tmpl)
 {
 	(void)share; (void)sa; (void)attr; (void)tmpl;
@@ -311,7 +318,10 @@ static void* x_CreateFileA(const char* p, u32 access, u32 share, void* sa, u32 d
 	if (disp == 4) flags |= O_CREAT;
 	int fd = open(path, flags, 0644);
 	if (fd < 0)
+	{
+		g_last_error = errno == EEXIST ? 80 : 3; /* ERROR_FILE_EXISTS / ERROR_PATH_NOT_FOUND */
 		return (void*)-1;
+	}
 	Handle* h = calloc(1, sizeof(Handle));
 	h->kind = H_FILE;
 	h->fd = fd;
@@ -505,6 +515,7 @@ static void* resolve(int lib, u32 ord)
 		case 0x436: return (void*)x_Sleep;
 		case 0x445: return (void*)x_CreateDirectoryA;
 		case 0x447: return (void*)x_CreateFileA;
+		case 0x416: return (void*)x_GetLastError;
 		case 0x449: return (void*)x_FindFirstFileA;
 		case 0x44A: return (void*)x_FindNextFileA;
 		case 0x44B: return (void*)x_GetFileAttributesA;
@@ -760,11 +771,64 @@ int main(int argc, char** argv)
 	if (argc < 4) { printf("usage: run_xex <file.xex> <dashlaunch|sideload> <dir>\n"); return 2; }
 	g_root = argv[3];
 	const int lookup = strcmp(argv[2], "lookup") == 0;
-	const int sideload = lookup || strcmp(argv[2], "sideload") == 0;
+	const int modules = strcmp(argv[2], "modules") == 0;
+	const int sideload = lookup || modules || strcmp(argv[2], "sideload") == 0;
 	g_in_title = sideload;
 	load_xex(argv[1]);
 	const Entry entry = (Entry)(uintptr_t)g_entry;
 	CHECK(g_flags == (sideload ? 0x9u : 0x8u)); /* TITLE|DLL vs DLL */
+
+	if (modules)
+	{
+		/* A game that loads more of its code after it starts: the executable has
+		 * no portal imports, and a module loaded later imports GetRawEx/SetRawEx. */
+		static Game exe, mod;
+		static u8 mod_header[16 + 256];
+		make_lookup_game(&exe, 8);
+		make_game(&mod, 1, 9);
+		memcpy(mod_header, "XEX2", 4);
+		memcpy(mod_header + 16, mod.header, 256);
+		*(u32*)(mod.ldr + 0x58) = (u32)(uintptr_t)mod_header;
+		*(u32*)(mod.ldr + 0x1C) = 0x88000000; /* ImageBase */
+		*(u32*)(mod.ldr + 0x20) = 0x00100000; /* SizeOfNtImage */
+		g_exec_module = exe.ldr;
+		g_title_id = 0x41560930;
+		CHECK(entry((void*)(uintptr_t)g_base, 1, NULL) == 1);
+		usleep(300000);
+		CHECK(!note_contains("ready"));
+		/* the game loads its other module: InLoadOrderLinks exe <-> mod */
+		*(u32*)(exe.ldr + 0) = (u32)(uintptr_t)mod.ldr; *(u32*)(exe.ldr + 4) = (u32)(uintptr_t)mod.ldr;
+		*(u32*)(mod.ldr + 0) = (u32)(uintptr_t)exe.ldr; *(u32*)(mod.ldr + 4) = (u32)(uintptr_t)exe.ldr;
+		for (int i = 0; i < 300 && mod.slots[0] == mod.real[0]; i++)
+			usleep(20000);
+		CHECK(mod.slots[0] != mod.real[0] && mod.slots[2] != mod.real[1]); /* module patched */
+		if (mod.slots[0] == mod.real[0])
+		{
+			printf("modules: %d passed, %d failed (module never patched)\n", g_pass, g_fail);
+			return 1;
+		}
+		for (int i = 0; i < 300 && !note_contains("ready"); i++)
+			usleep(20000);
+		CHECK(note_contains("Toy Portal 360 ready"));
+		u8 pk[32], rp[32];
+		memset(pk, 0, 32);
+		pk[0] = 0x0B; pk[1] = 0x11; pk[2] = 0x55; pk[3] = 0x0F; pk[4] = 0xB0; pk[5] = 0x01;
+		CHECK(((SetRawEx)(mod.stubs + 4))(5, pk, 32) == 0);
+		int got = 0;
+		for (int i = 0; i < 200 && !got; i++)
+		{
+			u32 len = 32; u16 stt = 0;
+			memset(rp, 0, 32);
+			got = ((GetRawEx)mod.stubs)(5, rp, &len, &stt) == 0 && len == 32;
+			if (!got) usleep(5000);
+		}
+		CHECK(got && rp[0] == 0x0B && rp[2] == 0x55 && memcmp(rp + 5, "(c) LEGO 2014", 13) == 0);
+		CHECK(g_real_calls == 0);
+		CHECK(entry((void*)(uintptr_t)g_base, 0, NULL) == 1);
+		usleep(200000);
+		printf("modules: %d passed, %d failed\n", g_pass, g_fail);
+		return g_fail ? 1 : 0;
+	}
 
 	if (lookup)
 	{

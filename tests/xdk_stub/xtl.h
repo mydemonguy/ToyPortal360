@@ -34,6 +34,7 @@ void InitializeCriticalSection(CRITICAL_SECTION*);
 void EnterCriticalSection(CRITICAL_SECTION*);
 void LeaveCriticalSection(CRITICAL_SECTION*);
 DWORD GetTickCount();
+DWORD GetLastError();
 void Sleep(DWORD);
 DWORD WaitForSingleObject(HANDLE, DWORD);
 BOOL CloseHandle(HANDLE);
@@ -41,6 +42,8 @@ BOOL CloseHandle(HANDLE);
 #define ERROR_SUCCESS 0
 #define ERROR_INVALID_PARAMETER 87
 #define ERROR_ACCESS_DENIED 5
+#define ERROR_FILE_EXISTS 80
+#define ERROR_ALREADY_EXISTS 183
 #define ERROR_IO_PENDING 997
 #define INVALID_HANDLE_VALUE ((HANDLE)-1)
 #define INVALID_FILE_ATTRIBUTES ((DWORD)-1)

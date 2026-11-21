@@ -20,6 +20,7 @@ xbox360_stub FindNextFileA, 0x0101044a
 xbox360_stub CloseHandle, 0x01010414
 xbox360_stub Sleep, 0x01010436
 xbox360_stub GetTickCount, 0x01010415
+xbox360_stub GetLastError, 0x01010416
 
 /*
  * DWORD tp_ccall(fn, a0..a6): calls the console function `fn` with up to

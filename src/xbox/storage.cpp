@@ -304,8 +304,13 @@ bool write_figure(const char* path, const BYTE* data, DWORD size)
 	return ok && written == size;
 }
 
-bool create_unique_file(const char* folder, const char* base, const char* ext, const BYTE* data, DWORD size, char* out_path, int out_size)
+// Writes a new file, adding " (2)", " (3)"... if the name is taken. Returns
+// false with *error set (a Win32 error code) when it can't: only "file
+// exists" moves on to the next number, anything else is reported at once.
+bool create_unique_file(const char* folder, const char* base, const char* ext, const BYTE* data, DWORD size, char* out_path, int out_size, DWORD* error)
 {
+	*error = 0;
+	CreateDirectory(folder, NULL); // in case it was removed since start-up
 	for (int i = 0; i < 100; i++)
 	{
 		if (i == 0)
@@ -315,12 +320,27 @@ bool create_unique_file(const char* folder, const char* base, const char* ext, c
 		out_path[out_size - 1] = 0;
 		HANDLE f = CreateFile(out_path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (f == INVALID_HANDLE_VALUE)
-			continue; // exists already: try the next number
+		{
+			const DWORD e = GetLastError();
+			if (e == ERROR_FILE_EXISTS || e == ERROR_ALREADY_EXISTS)
+				continue; // taken: try the next number
+			*error = e ? e : 0xFFFFFFFF;
+			log_line("Could not create %s (error %u)", out_path, (unsigned)e);
+			return false;
+		}
 		DWORD written = 0;
 		const BOOL ok = WriteFile(f, data, size, &written, NULL);
+		*error = ok ? 0 : GetLastError();
 		CloseHandle(f);
-		return ok && written == size;
+		if (!ok || written != size)
+		{
+			log_line("Could not write %s (error %u, %u of %u bytes)", out_path, (unsigned)*error, (unsigned)written, (unsigned)size);
+			if (!*error) *error = 0xFFFFFFFF;
+			return false;
+		}
+		return true;
 	}
+	*error = ERROR_FILE_EXISTS;
 	return false;
 }
 

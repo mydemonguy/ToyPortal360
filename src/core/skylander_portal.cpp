@@ -44,6 +44,60 @@ SkylanderPortal::SkylanderPortal()
 	reset();
 }
 
+// ---- Figure creation as Dolphin does it (SkylanderFigure::Create) -----------
+// Dolphin's figures carry what a real tag has: a random NUID with its BCC, the
+// ATQA/SAK bytes, and each sector's key A worked out from the NUID. The
+// minimal RPCS3-style figure above has none of these, and Skylanders
+// Imaginators on a console called it corrupted.
+
+// CRC-64 limited to 48 bits per step (Dolphin's ComputeCRC48).
+static unsigned long long sky_crc48(const u8* data, int n)
+{
+	const unsigned long long poly = 0x42F0E1EBA9EA3693ULL;
+	unsigned long long crc = 2ULL * 2ULL * 3ULL * 1103ULL * 12868356821ULL;
+	for (int i = 0; i < n; i++)
+	{
+		crc ^= (unsigned long long)data[i] << 40;
+		for (int j = 0; j < 8; j++)
+			crc = (crc >> 47) & 1 ? (crc << 1) ^ poly : crc << 1;
+	}
+	return crc & 0xFFFFFFFFFFFFULL;
+}
+
+unsigned long long skylander_key_a(u8 sector, const u8* nuid)
+{
+	if (sector == 0)
+		return 73ULL * 2017ULL * 560381651ULL;
+	const u8 data[5] = {nuid[0], nuid[1], nuid[2], nuid[3], sector};
+	const unsigned long long crc = sky_crc48(data, 5);
+	unsigned long long swapped = 0;
+	for (int i = 0; i < 8; i++)
+		swapped = (swapped << 8) | ((crc >> (i * 8)) & 0xFF);
+	return swapped >> 16;
+}
+
+void skylander_create_figure(u8* buf, u16 id, u16 variant, const u8* nuid)
+{
+	memset(buf, 0, kSkyFigureSize);
+	wr_le32(buf + 0x36, 0x690F0F0F);
+	for (u32 index = 1; index < 0x10; index++)
+		wr_le32(buf + (index * 0x40) + 0x36, 0x69080F7F);
+	memcpy(buf, nuid, 4);
+	buf[4] = (u8)(nuid[0] ^ nuid[1] ^ nuid[2] ^ nuid[3]); // BCC
+	buf[5] = 0x81; buf[6] = 0x01;                          // ATQA
+	buf[7] = 0x0F;                                         // SAK
+	wr_le16(buf + 0x10, id);
+	wr_le16(buf + 0x1C, variant);
+	wr_le16(buf + 0x1E, skylander_crc16(0xFFFF, buf, 0x1E));
+	for (u8 sector = 0; sector < 0x10; sector++)
+	{
+		const unsigned long long key = skylander_key_a(sector, buf);
+		u8* at = buf + sector * 64 + 48;
+		for (int j = 0; j < 6; j++)
+			at[5 - j] = (u8)(key >> (j * 8));
+	}
+}
+
 void SkylanderPortal::reset()
 {
 	memset(figures_, 0, sizeof(figures_));

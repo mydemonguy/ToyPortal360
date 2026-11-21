@@ -262,6 +262,7 @@ extern "C" BOOL APIENTRY DllMain(HANDLE module, DWORD reason, LPVOID)
 		if (resolved)
 			hook_title(executable_module(), current_title_id());
 		const bool started = tp_start_thread(sideload_thread, NULL, &s_thread, false);
+		(void)started;
 		CRUMB("05-STARTED", started);
 	}
 	else if (reason == DLL_PROCESS_DETACH)

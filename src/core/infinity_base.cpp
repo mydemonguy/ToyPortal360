@@ -282,28 +282,41 @@ void InfinityBase::present_figures(u8 sequence, u8* reply)
 	reply[x] = checksum(reply, x);
 }
 
-void InfinityBase::query_block(u8 order, u8 block, u8* reply, u8 sequence)
+// Reads and writes name a sector and a block within it, as on the figure's
+// chip (4 blocks per sector): file block = sector * 4 + block. RPCS3 ignores
+// the block byte (block 0 -> file block 1, others -> sector * 4), so on a
+// console Disney Infinity 3.0's reads of sector 1-3 block 1 came back as block
+// 0 again. Sector 0 with block 0 keeps RPCS3's meaning (file block 1, the
+// figure id), since block 0 itself is the chip's serial number.
+static u32 inf_file_block(u8 sector, u8 block)
+{
+	if (sector == 0 && block == 0)
+		return 1;
+	return sector * 4u + block;
+}
+
+void InfinityBase::query_block(u8 order, u8 sector, u8 block, u8* reply, u8 sequence)
 {
 	const InfFigure& f = by_order(order);
 	reply[0] = 0xAA;
 	reply[1] = 0x12;
 	reply[2] = sequence;
 	reply[3] = 0x00;
-	const u32 file_block = block == 0 ? 1 : block * 4u;
+	const u32 file_block = inf_file_block(sector, block);
 	if (f.present && file_block < 20)
 		memcpy(reply + 4, f.data + 16 * file_block, 16);
 	reply[20] = checksum(reply, 20);
 }
 
-void InfinityBase::write_block(u8 order, u8 block, const u8* to_write, u8* reply, u8 sequence)
+void InfinityBase::write_block(u8 order, u8 sector, u8 block, const u8* to_write, u8* reply, u8 sequence)
 {
 	InfFigure& f = by_order(order);
 	reply[0] = 0xAA;
 	reply[1] = 0x02;
 	reply[2] = sequence;
 	reply[3] = 0x00;
-	const u32 file_block = block == 0 ? 1 : block * 4u;
-	if (f.present && file_block < 20)
+	const u32 file_block = inf_file_block(sector, block);
+	if (f.present && file_block < 20 && (file_block & 3) != 3) // never a sector trailer
 	{
 		memcpy(f.data + file_block * 16, to_write, 16);
 		f.dirty = true;
@@ -364,10 +377,10 @@ void InfinityBase::handle_command(const u8* buf, u32 len)
 		present_figures(sequence, q);
 		break;
 	case 0xA2: // Read a block
-		query_block(buf[4], buf[5], q, sequence);
+		query_block(buf[4], buf[5], buf[6], q, sequence);
 		break;
 	case 0xA3: // Write a block
-		write_block(buf[4], buf[5], buf + 7, q, sequence);
+		write_block(buf[4], buf[5], buf[6], buf + 7, q, sequence);
 		break;
 	case 0xB4: // Figure UID
 		figure_identifier(buf[4], sequence, q);

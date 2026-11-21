@@ -73,8 +73,8 @@ private:
 	static u8 checksum(const u8* data, int n);
 	void blank_response(u8 sequence, u8* reply);
 	void present_figures(u8 sequence, u8* reply);
-	void query_block(u8 order, u8 block, u8* reply, u8 sequence);
-	void write_block(u8 order, u8 block, const u8* to_write, u8* reply, u8 sequence);
+	void query_block(u8 order, u8 sector, u8 block, u8* reply, u8 sequence);
+	void write_block(u8 order, u8 sector, u8 block, const u8* to_write, u8* reply, u8 sequence);
 	void figure_identifier(u8 order, u8 sequence, u8* reply);
 	InfFigure& by_order(u8 order);
 	void push_change(int slot, bool removed);

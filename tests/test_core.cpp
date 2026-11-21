@@ -224,6 +224,31 @@ static void test_dim_session()
 	CHECK(reply[0] == 0x56 && reply[5] == 1 && r.dim.count() == 0);
 }
 
+// Dolphin-style figure: NUID/BCC/ATQA/SAK, ID and variant, checksum, and
+// key A per sector (expected keys worked out in Python from Dolphin's code;
+// sector 0's is the well-known 4B0B20107CCB).
+static void test_sky_create_figure()
+{
+	u8 fig[kSkyFigureSize];
+	const u8 nuid[4] = {0x12, 0x34, 0x56, 0x78};
+	skylander_create_figure(fig, 630, 0x0000, nuid); // Crash Bandicoot
+	CHECK(fig[0] == 0x12 && fig[1] == 0x34 && fig[2] == 0x56 && fig[3] == 0x78);
+	CHECK(fig[4] == (0x12 ^ 0x34 ^ 0x56 ^ 0x78));
+	CHECK(fig[5] == 0x81 && fig[6] == 0x01 && fig[7] == 0x0F);
+	CHECK(rd_le16(fig + 0x10) == 630 && rd_le16(fig + 0x1C) == 0);
+	CHECK(rd_le16(fig + 0x1E) == skylander_crc16(0xFFFF, fig, 0x1E));
+	const u8 key0[6] = {0x4B, 0x0B, 0x20, 0x10, 0x7C, 0xCB};
+	const u8 key1[6] = {0x23, 0x15, 0x50, 0xB9, 0xAF, 0x28};
+	const u8 key15[6] = {0x28, 0x97, 0xEB, 0x5F, 0x19, 0xC6};
+	CHECK(memcmp(fig + 0 * 64 + 48, key0, 6) == 0);
+	CHECK(memcmp(fig + 1 * 64 + 48, key1, 6) == 0);
+	CHECK(memcmp(fig + 15 * 64 + 48, key15, 6) == 0);
+	CHECK(rd_le32(fig + 0x36) == 0x690F0F0F && rd_le32(fig + 0x76) == 0x69080F7F);
+	// It still loads and answers like any other figure.
+	SkylanderPortal portal;
+	CHECK(portal.load(fig, "Crash Bandicoot.sky") >= 0);
+}
+
 static void test_sky_session()
 {
 	ToyRouter r;
@@ -473,6 +498,37 @@ static void test_inf_session()
 	r.on_read(reply, 32, 0);
 	CHECK(reply[1] == 0x02 && r.inf.figure(3).dirty && r.inf.figure(3).data[64] == 0xC0);
 
+	// Sector and block, as Disney Infinity 3.0 sent them on a console: write
+	// sector 1 block 1 lands in file block 5 (not on top of block 4), reads of
+	// (1,0) and (1,1) return different blocks, and (0,1) is the figure id.
+	memset(cmd, 0, 32);
+	cmd[0] = 0xFF; cmd[1] = 0x14; cmd[2] = 0xA3; cmd[3] = 0x08; cmd[4] = 0; cmd[5] = 1; cmd[6] = 1;
+	for (int i = 0; i < 16; i++) cmd[7 + i] = (u8)(0xD0 + i);
+	r.on_write(cmd, 32);
+	r.on_read(reply, 32, 0);
+	CHECK(r.inf.figure(3).data[80] == 0xD0 && r.inf.figure(3).data[64] == 0xC0);
+	memset(cmd, 0, 32);
+	cmd[0] = 0xFF; cmd[1] = 0x05; cmd[2] = 0xA2; cmd[3] = 0x09; cmd[4] = 0; cmd[5] = 1; cmd[6] = 1;
+	r.on_write(cmd, 32);
+	r.on_read(reply, 32, 0);
+	CHECK(reply[4] == 0xD0);
+	cmd[3] = 0x0A; cmd[6] = 0;
+	r.on_write(cmd, 32);
+	r.on_read(reply, 32, 0);
+	CHECK(reply[4] == 0xC0);
+	cmd[3] = 0x0B; cmd[5] = 0; cmd[6] = 1;
+	r.on_write(cmd, 32);
+	r.on_read(reply, 32, 0);
+	CHECK(memcmp(reply + 4, r.inf.figure(3).data + 16, 16) == 0);
+	// A write that names a sector trailer (block 3) is ignored.
+	const u8 trailer0 = r.inf.figure(3).data[7 * 16];
+	memset(cmd, 0, 32);
+	cmd[0] = 0xFF; cmd[1] = 0x14; cmd[2] = 0xA3; cmd[3] = 0x0C; cmd[4] = 0; cmd[5] = 1; cmd[6] = 3;
+	for (int i = 0; i < 16; i++) cmd[7 + i] = 0xEE;
+	r.on_write(cmd, 32);
+	r.on_read(reply, 32, 0);
+	CHECK(r.inf.figure(3).data[7 * 16] == trailer0);
+
 	// Remove and re-place: the spot keeps its order number.
 	CHECK(r.inf.remove(3));
 	r.on_read(reply, 32, 0);
@@ -512,6 +568,7 @@ int main(int argc, char** argv)
 	test_tea_roundtrip();
 	test_dim_create_all_characters();
 	test_dim_session();
+	test_sky_create_figure();
 	test_sky_session();
 	test_wrapped_framing();
 	test_inf_create_all();

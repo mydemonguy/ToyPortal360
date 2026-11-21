@@ -172,6 +172,17 @@ static PVOID resolve(const char* module, DWORD ordinal)
 extern "C" DWORD HookGetProcAddress(HANDLE module, DWORD ordinal, PVOID* address)
 {
 	const DWORD st = CALL_REAL3(s_real_get_proc, module, ordinal, address);
+	// The game's run-time lookups in XAM (where the portal functions live) go
+	// to log.txt: they show how a game reaches the portal.
+	static HANDLE s_xam = NULL;
+	static int s_logged = 0;
+	if (!s_xam)
+		XexGetModuleHandle((PSZ)"xam.xex", &s_xam);
+	if (module == s_xam && s_logged < 100)
+	{
+		s_logged++;
+		log_line("Game looked up XAM ordinal %03X (status %08X)", (unsigned)ordinal, (unsigned)st);
+	}
 	if (st != 0 || !address || !*address)
 		return st;
 	PVOID hook = NULL;
@@ -286,14 +297,80 @@ extern "C" void hooks_wanted(unsigned out[4])
 	out[3] = (unsigned)s_real_set_ex;
 }
 
-int hooks_patch_title(PLDR_DATA_TABLE_ENTRY title)
+static int patch_module(PLDR_DATA_TABLE_ENTRY m)
 {
 	int n = 0;
-	n += patch_import(title, (PVOID)s_real_get, HOOK_ENTRY(tp_entry_get_raw, HookGetRaw));
-	n += patch_import(title, (PVOID)s_real_set, HOOK_ENTRY(tp_entry_set_raw, HookSetRaw));
-	n += patch_import(title, (PVOID)s_real_get_ex, HOOK_ENTRY(tp_entry_get_raw_ex, HookGetRawEx));
-	n += patch_import(title, (PVOID)s_real_set_ex, HOOK_ENTRY(tp_entry_set_raw_ex, HookSetRawEx));
+	n += patch_import(m, (PVOID)s_real_get, HOOK_ENTRY(tp_entry_get_raw, HookGetRaw));
+	n += patch_import(m, (PVOID)s_real_set, HOOK_ENTRY(tp_entry_set_raw, HookSetRaw));
+	n += patch_import(m, (PVOID)s_real_get_ex, HOOK_ENTRY(tp_entry_get_raw_ex, HookGetRawEx));
+	n += patch_import(m, (PVOID)s_real_set_ex, HOOK_ENTRY(tp_entry_set_raw_ex, HookSetRawEx));
 	// Not counted: the title is only a toy game once it looks one up.
-	patch_import(title, (PVOID)s_real_get_proc, HOOK_ENTRY(tp_entry_get_proc, HookGetProcAddress));
+	patch_import(m, (PVOID)s_real_get_proc, HOOK_ENTRY(tp_entry_get_proc, HookGetProcAddress));
+	return n;
+}
+
+// A loaded module of the running game other than the executable: a title
+// image (0x82000000-0x8FFFFFFF) with a real XEX header, and not this plugin.
+static bool is_other_game_module(PLDR_DATA_TABLE_ENTRY m, PLDR_DATA_TABLE_ENTRY title)
+{
+	if (m == title || !MmIsAddressValid(m) || !MmIsAddressValid((BYTE*)m + 0x5C))
+		return false;
+	const DWORD base = (DWORD)m->ImageBase;
+	if (base < 0x82000000 || base >= 0x90000000)
+		return false;
+	const DWORD self = (DWORD)(void*)&patch_module;
+	if (self >= base && self - base < m->SizeOfNtImage)
+		return false;
+	const DWORD* header = (const DWORD*)m->XexHeaderBase;
+	return header && MmIsAddressValid((PVOID)header) && header[0] == 0x58455832; // "XEX2"
+}
+
+// Logs each game module the first time it is seen (log.txt shows which of the
+// game's modules exist and which one imports the portal functions).
+static void note_module(PLDR_DATA_TABLE_ENTRY m, int patched)
+{
+	static PLDR_DATA_TABLE_ENTRY s_seen[32];
+	static int s_count = 0;
+	for (int i = 0; i < s_count; i++)
+		if (s_seen[i] == m)
+			return;
+	if (s_count < 32)
+		s_seen[s_count++] = m;
+	char name[64];
+	int len = 0;
+	const PWSTR w = m->BaseDllName.Buffer;
+	const int chars = m->BaseDllName.Length / 2;
+	if (w && MmIsAddressValid((PVOID)w))
+		for (; len < chars && len < 63; len++)
+			name[len] = (char)(w[len] < 128 ? w[len] : '?');
+	name[len] = 0;
+	log_line("Game module %s at %p (%u bytes): %d portal import(s) patched", len ? name : "?",
+		m->ImageBase, (unsigned)m->SizeOfNtImage, patched);
+}
+
+// Patches the game's executable and every other module of the game that is
+// loaded: a game can load more of its code after it starts, and the loader
+// links those modules to the portal functions itself, past both other hooks.
+// Called again until the game is hooked, so modules loaded later are covered.
+int hooks_patch_title(PLDR_DATA_TABLE_ENTRY title)
+{
+	if (!title)
+		return 0;
+	int n = patch_module(title);
+	note_module(title, n);
+	LIST_ENTRY* head = &title->InLoadOrderLinks;
+	int guard = 0;
+	for (LIST_ENTRY* e = head->Flink; e && e != head && guard < 256; e = e->Flink, guard++)
+	{
+		if (!MmIsAddressValid(e))
+			break;
+		PLDR_DATA_TABLE_ENTRY m = (PLDR_DATA_TABLE_ENTRY)e; // InLoadOrderLinks is first
+		if (is_other_game_module(m, title))
+		{
+			const int k = patch_module(m);
+			note_module(m, k);
+			n += k;
+		}
+	}
 	return n;
 }

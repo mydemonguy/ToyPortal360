@@ -75,6 +75,7 @@ extern "C"
 	DWORD XexGetProcedureAddress(HANDLE hand, DWORD dwOrdinal, PVOID Address);
 	PVOID RtlImageXexHeaderField(PVOID XexHeaderBase, DWORD ImageField);
 	LONG ObCreateSymbolicLink(TP_ANSI_STRING* SymbolicLinkName, TP_ANSI_STRING* DeviceName);
+	BOOL MmIsAddressValid(PVOID Address);
 #ifndef TOYPORTAL_FORGE // the Xenon Forge build gets these from src/forge
 	DWORD ExCreateThread(PHANDLE pHandle, DWORD dwStackSize, LPDWORD lpThreadId, PVOID apiThreadStartup,
 		LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter, DWORD dwCreationFlagsMod);

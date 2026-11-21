@@ -39,7 +39,7 @@ void config_load();
 int list_figure_files(ToyKind kind, const char* filter, char (*names)[48], int max);
 bool read_figure(const char* path, BYTE* out, DWORD size);
 bool write_figure(const char* path, const BYTE* data, DWORD size);
-bool create_unique_file(const char* folder, const char* base, const char* ext, const BYTE* data, DWORD size, char* out_path, int out_size);
+bool create_unique_file(const char* folder, const char* base, const char* ext, const BYTE* data, DWORD size, char* out_path, int out_size, DWORD* error);
 void figure_folder(ToyKind kind, char* out, int out_size);
 DWORD figure_size(ToyKind kind);
 // TPHDD:\x -> Hdd:\x etc., for showing paths to the player.

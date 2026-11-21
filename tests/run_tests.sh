@@ -56,4 +56,6 @@ if command -v powerpc-linux-gnu-gcc-11 >/dev/null && command -v qemu-ppc >/dev/n
 	d=$(mktemp -d); qemu-ppc build/run_xex build/forge-sideload/ToyPortal360.xex sideload "$d"
 	echo "== the Peer Pressure .xex with a game that looks the toy-pad functions up (LEGO Dimensions)"
 	d=$(mktemp -d); qemu-ppc build/run_xex build/forge-sideload/ToyPortal360.xex lookup "$d"
+	echo "== the Peer Pressure .xex with a game that loads its portal code in a later module (Skylanders)"
+	d=$(mktemp -d); qemu-ppc build/run_xex build/forge-sideload/ToyPortal360.xex modules "$d"
 fi

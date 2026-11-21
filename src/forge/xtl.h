@@ -41,6 +41,8 @@ typedef struct _LIST_ENTRY { struct _LIST_ENTRY* Flink; struct _LIST_ENTRY* Blin
 
 #define ERROR_SUCCESS 0
 #define ERROR_ACCESS_DENIED 5
+#define ERROR_FILE_EXISTS 80
+#define ERROR_ALREADY_EXISTS 183
 #define ERROR_INVALID_PARAMETER 87
 #define ERROR_IO_PENDING 997
 #define INVALID_HANDLE_VALUE ((HANDLE)-1)
@@ -97,6 +99,7 @@ TP_EXTERN_C BOOL FindNextFileA(HANDLE, WIN32_FIND_DATA*);
 TP_EXTERN_C BOOL CloseHandle(HANDLE);
 TP_EXTERN_C VOID Sleep(DWORD);
 TP_EXTERN_C DWORD GetTickCount(VOID);
+TP_EXTERN_C DWORD GetLastError(VOID);
 TP_EXTERN_C DWORD WaitForSingleObject(HANDLE, DWORD);
 #define CreateFile CreateFileA
 #define GetFileAttributes GetFileAttributesA

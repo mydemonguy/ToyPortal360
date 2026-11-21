@@ -11,6 +11,10 @@ u16 skylander_crc16(u16 init_value, const u8* buffer, u32 size);
 
 // Builds a fresh, never-played figure image (same layout RPCS3's creator writes).
 void skylander_create_blank(u8* out_1024, u16 id, u16 variant);
+// A new figure as Dolphin makes one (NUID + BCC, ATQA/SAK, per-sector key A).
+// nuid: 4 random bytes. Use this one for figures players create.
+void skylander_create_figure(u8* out_1024, u16 id, u16 variant, const u8* nuid);
+unsigned long long skylander_key_a(u8 sector, const u8* nuid);
 
 struct SkyFigure
 {

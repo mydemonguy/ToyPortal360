@@ -582,7 +582,9 @@ static void action_create(ToyKind kind)
 	if (kind == kToySkylanders)
 	{
 		const SkyName& s = sky_names(&count)[k];
-		skylander_create_blank(data, s.id, s.variant);
+		const u32 r = random32();
+		const u8 nuid[4] = {(u8)r, (u8)(r >> 8), (u8)(r >> 16), (u8)(r >> 24)};
+		skylander_create_figure(data, s.id, s.variant, nuid);
 		name = s.name;
 		ext = "sky";
 		size = kSkyFigureSize;
@@ -620,9 +622,16 @@ static void action_create(ToyKind kind)
 	char folder[96], safe[48], path[200];
 	figure_folder(kind, folder, sizeof(folder));
 	safe_file_name(name, safe, sizeof(safe));
-	if (!create_unique_file(folder, safe, ext, data, size, path, sizeof(path)))
+	DWORD error = 0;
+	if (!create_unique_file(folder, safe, ext, data, size, path, sizeof(path), &error))
 	{
-		say(L"Create new figure", L"Could not write the new file.");
+		wchar_t text[300], wpath[200];
+		char shown[200];
+		display_path(path, shown, sizeof(shown));
+		widen(shown, wpath, 200);
+		_snwprintf(text, 299, L"Could not write the new file:\n%s\n\nError %u. Check that the drive isn't full and that the folder exists.", wpath, (unsigned)error);
+		text[299] = 0;
+		say(L"Create new figure", text);
 		return;
 	}
 	wchar_t text[200], wname[64];

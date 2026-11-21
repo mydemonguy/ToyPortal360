@@ -1,5 +1,6 @@
 // A small fake of the Xbox 360 runtime (kernel, XAM, Win32 file API, system
 // UI) so the plugin's Xbox-only code can run under qemu-ppc for testing.
+#include <errno.h>
 #include "xdk_control.h"
 #include "../../src/xbox/kernel.h"
 #include <pthread.h>
@@ -152,6 +153,9 @@ BOOL CloseHandle(HANDLE h)
 
 // ---- files ------------------------------------------------------------------
 
+static __thread DWORD s_last_error = 0;
+DWORD GetLastError() { return s_last_error; }
+
 HANDLE CreateFile(const char* path, DWORD access, DWORD, void*, DWORD disp, DWORD, HANDLE)
 {
 	const std::string p = fake::host_path(path);
@@ -164,7 +168,10 @@ HANDLE CreateFile(const char* path, DWORD access, DWORD, void*, DWORD disp, DWOR
 		flags |= O_CREAT;
 	const int fd = open(p.c_str(), flags, 0644);
 	if (fd < 0)
+	{
+		s_last_error = errno == EEXIST ? ERROR_FILE_EXISTS : 3; // 3 = ERROR_PATH_NOT_FOUND
 		return INVALID_HANDLE_VALUE;
+	}
 	Handle* h = new Handle();
 	h->kind = 1;
 	h->fd = fd;
@@ -401,7 +408,15 @@ extern "C" DWORD XexGetProcedureAddress(HANDLE h, DWORD ord, PVOID out)
 // The fake title keeps its import descriptor right at XexHeaderBase.
 extern "C" PVOID RtlImageXexHeaderField(PVOID base, DWORD field)
 {
-	return field == XEX_HEADER_IMPORTS ? base : NULL;
+	if (field != XEX_HEADER_IMPORTS)
+		return NULL;
+	// 16 bytes in when the header starts with a real "XEX2" signature.
+	return *(DWORD*)base == 0x58455832 ? (BYTE*)base + 16 : base;
+}
+
+extern "C" BOOL MmIsAddressValid(PVOID p)
+{
+	return p != NULL;
 }
 
 // Lets the test know the real functions' addresses.
