@@ -60,7 +60,16 @@ def create_blank_character(uid_buf, ident):
     buf[0:8] = uid_buf[0:8]
     buf[0], buf[7] = 0x04, 0x80
     buf[3] = ident & 0xFF
-    if ident:
+    if ident >= 1000:
+        # Vehicles and gadgets differ from RPCS3 (which encrypts them like
+        # characters, and the game doesn't take those): as on real tags and in
+        # Ellerbach/LegoDimensions LegoTag.EncryptVehicleId, the id is plain
+        # little-endian in page 0x24 and page 0x26 is 00 01 00 00.
+        uid = bytes([buf[0], buf[1], buf[2], buf[4], buf[5], buf[6], buf[7]])
+        struct.pack_into("<H", buf, 36 * 4, ident)
+        struct.pack_into(">H", buf, 38 * 4, 1)
+        buf[43*4:43*4+4] = pwd_generate(uid)
+    elif ident:
         uid = bytes([buf[0], buf[1], buf[2], buf[4], buf[5], buf[6], buf[7]])
         enc = encrypt(struct.pack("<II", ident, ident), figure_key(buf))
         buf[36*4:36*4+4] = enc[0:4]

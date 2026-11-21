@@ -131,6 +131,45 @@ static void test_dim_create_all_characters()
 	}
 	CHECK(ok == n);
 	printf("  %d/%d Dimensions characters round-trip through create -> read id\n", ok, n);
+
+	// Vehicles and gadgets: id plain in page 36, page 38 = 00 01 00 00.
+	const DimName* tokens = dim_token_names(&n);
+	ok = 0;
+	for (int i = 0; i < n; i++)
+	{
+		u8 uid[7], buf[kDimFigureSize];
+		rnd(uid, 7);
+		DimensionsToypad::create_blank(buf, (u16)tokens[i].id, uid);
+		if (DimensionsToypad::figure_id_of(buf) == tokens[i].id && rd_le16(buf + 36 * 4) == tokens[i].id &&
+			buf[38 * 4] == 0 && buf[38 * 4 + 1] == 1 && buf[38 * 4 + 2] == 0 && buf[38 * 4 + 3] == 0 &&
+			!DimensionsToypad::repair_vehicle(buf))
+			ok++;
+	}
+	CHECK(ok == n);
+	// A blank tag reads as 0; a character isn't touched by the repair.
+	u8 uid[7] = {4, 1, 2, 3, 4, 5, 6}, buf[kDimFigureSize], copy[kDimFigureSize];
+	DimensionsToypad::create_blank(buf, 0, uid);
+	CHECK(DimensionsToypad::figure_id_of(buf) == 0);
+	DimensionsToypad::create_blank(buf, 1, uid);
+	memcpy(copy, buf, kDimFigureSize);
+	CHECK(!DimensionsToypad::repair_vehicle(buf) && memcmp(buf, copy, kDimFigureSize) == 0);
+	// An old-style vehicle (Batmobile, 1006, encrypted like a character) is
+	// repaired into a real vehicle tag, and loading it marks it to be saved.
+	{
+		u8 key[16], plain[8], enc[8];
+		memset(buf, 0, kDimFigureSize);
+		buf[0] = 0x04; buf[1] = 0x11; buf[2] = 0x22; buf[4] = 0x33; buf[5] = 0x44; buf[6] = 0x55; buf[7] = 0x80;
+		DimensionsToypad::figure_key(buf, key);
+		wr_le32(plain, 1006);
+		wr_le32(plain + 4, 1006);
+		DimensionsToypad::encrypt(plain, key, enc);
+		memcpy(buf + 36 * 4, enc, 8);
+		DimensionsToypad d;
+		d.load(buf, "old.bin", 0);
+		CHECK(d.figure(0).id == 1006 && d.figure(0).dirty);
+		CHECK(rd_le16(d.figure(0).data + 36 * 4) == 1006 && d.figure(0).data[38 * 4 + 1] == 1);
+		CHECK(DimensionsToypad::repair_vehicle(buf) && DimensionsToypad::figure_id_of(buf) == 1006);
+	}
 }
 
 // Plays the game's side of the toy pad handshake.

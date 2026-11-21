@@ -135,7 +135,7 @@ If the DLL won't load, the load address may clash with something the game uses. 
 
 - **Your own toys:** dumps of your figures work as they are. Use 1024-byte Skylanders dumps, 180-byte NTAG213 Dimensions dumps and 320-byte Infinity dumps.
 - **From RPCS3:** files made with RPCS3's Skylanders, Dimensions and Infinity managers use the same format. Copy them straight across.
-- **On the console:** choose **More… → Create new figure**, type part of a name, and pick from the list. The lists come from RPCS3: 480 Skylanders, about 350 Dimensions figures, vehicles and gadgets, and 322 Infinity figures, play sets and power discs. A new figure starts unplayed, the same as RPCS3's creator.
+- **On the console:** choose **More… → Create new figure**, type part of a name, and pick from the list. The lists come from RPCS3: 480 Skylanders, about 350 Dimensions figures, vehicles and gadgets, and 322 Infinity figures, play sets and power discs. A new figure starts unplayed, the same as RPCS3's creator. Vehicles and gadgets are made the way real vehicle tags are (id in page 0x24, page 0x26 = `00 01 00 00`), not like RPCS3, which makes them like characters. Vehicle files made by older builds are fixed the first time they're put on the pad.
 
 ## Using it
 

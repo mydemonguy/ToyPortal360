@@ -62,6 +62,9 @@ public:
 	// Tag helpers (also used by the creator and the self-tests).
 	static void create_blank(u8* buf_180, u16 id, const u8* uid7_or_null);
 	static u32 figure_id_of(const u8* buf_180);
+	// Rewrites a vehicle made the old way (id encrypted like a character);
+	// true if it changed anything.
+	static bool repair_vehicle(u8* buf_180);
 	static void encrypt(const u8* in8, const u8* key16_or_null, u8* out8);
 	static void decrypt(const u8* in8, const u8* key16_or_null, u8* out8);
 	static void figure_key(const u8* buf_180, u8* key16);

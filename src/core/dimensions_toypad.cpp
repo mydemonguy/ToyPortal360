@@ -111,15 +111,42 @@ void DimensionsToypad::pwd_generate(const u8* uid7, u8* out4)
 	wr_le32(out4, dim_randomize(buf, 8));
 }
 
+// Page 38 says what a tag is: 00 00 00 00 a character, 00 01 00 00 a vehicle
+// or gadget (a blank tag is a vehicle tag with id 0).
+static bool is_vehicle_tag(const u8* buf)
+{
+	const u8* p = buf + 38 * 4;
+	return p[0] == 0 && p[1] == 1 && p[2] == 0 && p[3] == 0;
+}
+
 u32 DimensionsToypad::figure_id_of(const u8* buf)
 {
+	if (is_vehicle_tag(buf))
+		return rd_le16(buf + 36 * 4); // vehicles/gadgets: id stored plain in page 36
 	u8 key[16], dec[8];
 	figure_key(buf, key);
 	decrypt(buf + 36 * 4, key, dec);
-	const u32 fig = rd_le32(dec);
-	if (fig < 1000) // characters: id encrypted in page 36
-		return fig;
-	return rd_le32(buf + 36 * 4); // vehicles/gadgets: id stored plain in page 36
+	return rd_le32(dec); // characters: id encrypted in page 36
+}
+
+bool DimensionsToypad::repair_vehicle(u8* buf)
+{
+	// Toy Portal 360 up to the grid builds made vehicles and gadgets like
+	// characters: id encrypted in page 36, page 38 empty. The game doesn't
+	// take those as vehicles. Rewrite them the way real vehicle tags are.
+	if (is_vehicle_tag(buf))
+		return false;
+	u8 key[16], dec[8];
+	figure_key(buf, key);
+	decrypt(buf + 36 * 4, key, dec);
+	const u32 id = rd_le32(dec);
+	if (id < 1000 || id > 0xFFFF || rd_le32(dec + 4) != id)
+		return false;
+	memset(buf + 36 * 4, 0, 8);
+	wr_le16(buf + 36 * 4, (u16)id);
+	memset(buf + 38 * 4, 0, 4);
+	buf[38 * 4 + 1] = 1;
+	return true;
 }
 
 void DimensionsToypad::create_blank(u8* buf, u16 id, const u8* uid7)
@@ -135,7 +162,16 @@ void DimensionsToypad::create_blank(u8* buf, u16 id, const u8* uid7)
 	buf[7] = 0x80;
 	buf[3] = (u8)(id & 0xFF);
 
-	if (id != 0)
+	if (id >= 1000)
+	{
+		// Vehicles and gadgets: id plain in page 36, page 38 marks a vehicle.
+		u8 uid[7];
+		uid_of(buf, uid);
+		wr_le16(buf + 36 * 4, id);
+		wr_be16(buf + 38 * 4, 1);
+		pwd_generate(uid, buf + 43 * 4);
+	}
+	else if (id != 0)
 	{
 		u8 uid[7], key[16], plain[8], enc[8];
 		uid_of(buf, uid);
@@ -415,10 +451,12 @@ u32 DimensionsToypad::load(const u8* data, const char* path, int slot)
 		remove(slot);
 	DimFigure& f = figures_[slot];
 	memcpy(f.data, data, kDimFigureSize);
-	f.id = figure_id_of(data);
+	// A vehicle file made by an older Toy Portal 360 is fixed here and saved
+	// back (dirty) the next time figures are saved.
+	f.dirty = repair_vehicle(f.data);
+	f.id = figure_id_of(f.data);
 	f.pad = dimensions_pad_for_slot(slot);
 	f.index = (u8)(slot + 1);
-	f.dirty = false;
 	strncpy(f.path, path ? path : "", sizeof(f.path) - 1);
 	f.path[sizeof(f.path) - 1] = 0;
 	push_change(f, f.pad, false);
