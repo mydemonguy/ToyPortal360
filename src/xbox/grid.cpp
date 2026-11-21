@@ -418,6 +418,7 @@ struct PendingPlace
 	BYTE data[kSkyFigureSize];
 };
 static PendingPlace s_pending;
+static int s_force_pad = -1; // LEGO Dimensions: the pad the player picked
 
 // The spots this piece can use, in the order they're tried.
 static int spots_for(const BYTE* data, int* out)
@@ -433,7 +434,7 @@ static int spots_for(const BYTE* data, int* out)
 		static const u8 pads[3] = {kPadCenter, kPadLeft, kPadRight};
 		for (int p = 0; p < 3; p++)
 			for (int i = 0; i < kDimSlots; i++)
-				if (dimensions_pad_for_slot(i) == pads[p])
+				if (dimensions_pad_for_slot(i) == pads[p] && (s_force_pad < 0 || pads[p] == s_force_pad))
 					out[n++] = i;
 	}
 	else
@@ -576,11 +577,59 @@ static int place_data(const BYTE* data, const char* path, const char* label, boo
 	return 2;
 }
 
+// LEGO Dimensions: A on a figure that isn't on the pad asks which pad.
+static bool s_choosing = false;
+static int s_choose_item = 0;
+static int s_choose_pos = 1; // 0 left, 1 centre, 2 right
+static const u8 kChoosePads[3] = {kPadLeft, kPadCenter, kPadRight};
+static const char* const kPadNames[3] = {"left", "centre", "right"};
+
+static void pad_use(u8 pad, int* used, int* total)
+{
+	*used = *total = 0;
+	EnterCriticalSection(&g_lock);
+	for (int i = 0; i < kDimSlots; i++)
+		if (dimensions_pad_for_slot(i) == pad)
+		{
+			(*total)++;
+			if (g_router.dim.occupied(i))
+				(*used)++;
+		}
+	LeaveCriticalSection(&g_lock);
+}
+
+static void place_item(const GridItem& it, int pad);
+
 static void toggle(const GridItem& it)
+{
+	finish_pending(true); // one swap at a time
+	if (s_kind == kToyDimensions && slot_with(s_kind, it.key) < 0)
+	{
+		// Start on the first pad with room, centre first.
+		static const int order[3] = {1, 0, 2};
+		s_choose_pos = 1;
+		for (int i = 0; i < 3; i++)
+		{
+			int used, total;
+			pad_use(kChoosePads[order[i]], &used, &total);
+			if (used < total)
+			{
+				s_choose_pos = order[i];
+				break;
+			}
+		}
+		s_choose_item = (int)(&it - s_items);
+		s_choosing = true;
+		return;
+	}
+	place_item(it, -1);
+}
+
+static void place_item(const GridItem& it, int pad)
 {
 	char label[64];
 	item_label(it, label, sizeof(label));
-	finish_pending(true); // one swap at a time
+	finish_pending(true);
 
 	const int slot = slot_with(s_kind, it.key);
 	if (slot >= 0)
@@ -641,7 +690,16 @@ static void toggle(const GridItem& it)
 		return;
 	}
 	flush_dirty_figures();
+	if (pad >= 0)
+	{
+		const int i = pad == kPadLeft ? 0 : pad == kPadCenter ? 1 : 2;
+		const size_t n = strlen(label);
+		_snprintf(label + n, sizeof(label) - n, " (%s pad)", kPadNames[i]);
+		label[sizeof(label) - 1] = 0;
+	}
+	s_force_pad = pad;
 	const int placed = place_data(data, path, label, created);
+	s_force_pad = -1;
 	if (placed == 0)
 		footer("%s has no spot it can go on", label);
 	else if (placed == 1)
@@ -784,10 +842,31 @@ static u32 render(bool draw)
 	_snprintf(v.title, sizeof(v.title), "Toy Portal 360 - %s", toy_kind_name(s_kind));
 	_snprintf(v.page, sizeof(v.page), "Page %d of %d", s_menu.page() + 1, s_menu.pages());
 	const bool message = s_footer[0] && (int)(s_footer_until - GetTickCount()) > 0;
-	strncpy(v.footer, message ? s_footer : "A: place/remove   LB/RB: page   B: close", sizeof(v.footer) - 1);
+	strncpy(v.footer, message ? s_footer : s_kind == kToyDimensions ?
+		"A: pick a pad / take off   LB/RB: page   B: close" : "A: place/remove   LB/RB: page   B: close",
+		sizeof(v.footer) - 1);
+	if (s_choosing)
+	{
+		v.choosing = true;
+		v.choose = s_choose_pos;
+		char short_name[16];
+		strncpy(short_name, s_items[s_choose_item].name, 12);
+		short_name[12] = 0;
+		_snprintf(v.choose_text, sizeof(v.choose_text), "%s on:", short_name);
+		v.choose_text[sizeof(v.choose_text) - 1] = 0;
+		static const char* const titles[3] = {"Left", "Centre", "Right"};
+		for (int i = 0; i < 3; i++)
+		{
+			int used, total;
+			pad_use(kChoosePads[i], &used, &total);
+			_snprintf(v.choose_names[i], sizeof(v.choose_names[i]), "%s %d/%d", titles[i], used, total);
+			v.choose_names[i][sizeof(v.choose_names[i]) - 1] = 0;
+		}
+	}
 	const int first = s_menu.page() * kGridPerPage;
 	load_page_pictures(s_menu.page());
-	u32 state = (u32)s_menu.cursor() * 2654435761u ^ (message ? 0x80000000u : 0) ^ (u32)(size_t)s_footer_until;
+	u32 state = (u32)s_menu.cursor() * 2654435761u ^ (message ? 0x80000000u : 0) ^ (u32)(size_t)s_footer_until ^
+		(s_choosing ? 0x40000000u + 0x1000u * (u32)(s_choose_pos + 1) : 0);
 	for (int i = 0; i < kGridPerPage && first + i < s_item_count; i++)
 	{
 		const GridItem& it = s_items[first + i];
@@ -848,6 +927,7 @@ static DWORD WINAPI grid_thread(LPVOID)
 		s_age_kind = kind;
 	}
 	s_pending.active = false;
+	s_choosing = false;
 	build_items(kind);
 	s_menu.reset(s_item_count);
 	s_footer[0] = 0;
@@ -909,6 +989,33 @@ static DWORD WINAPI grid_thread(LPVOID)
 		}
 		const u16 buttons = read_pad(&st);
 		const u16 pressed = s_input.update(buttons, st.Gamepad.sThumbLX, st.Gamepad.sThumbLY, GetTickCount());
+		if (s_choosing)
+		{
+			// Left / right pick the pad, A puts the figure there, B goes back.
+			if ((pressed & XINPUT_GAMEPAD_DPAD_LEFT) && s_choose_pos > 0)
+				s_choose_pos--;
+			if ((pressed & XINPUT_GAMEPAD_DPAD_RIGHT) && s_choose_pos < 2)
+				s_choose_pos++;
+			if (pressed & XINPUT_GAMEPAD_A)
+			{
+				s_choosing = false;
+				place_item(s_items[s_choose_item], kChoosePads[s_choose_pos]);
+				shown = render(false) + 1;
+			}
+			else if (pressed & XINPUT_GAMEPAD_B)
+				s_choosing = false;
+			if (finish_pending(false))
+				shown = render(false) + 1;
+			const u32 now = render(false);
+			if (now != shown)
+			{
+				render(true);
+				shown = now;
+			}
+			blit_all();
+			Sleep(1);
+			continue;
+		}
 		const GridAction a = s_menu.press(pressed);
 		if (a == kGridClose)
 			break;

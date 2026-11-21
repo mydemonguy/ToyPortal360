@@ -268,6 +268,23 @@ void grid_render(u8* image, const GridView& v)
 			frame(image, x - 2, y - 2, kGridCellW + 4, kGridCellH + 4, 4, kGridCursor);
 	}
 
+	if (v.choosing)
+	{
+		// "Batman on:  [Left 1/3] [Centre 0/1] [Right 0/3]"
+		const int y = kGridImageH - 25;
+		grid_text(image, 10, y + 3, v.choose_text, kGridText);
+		const int bw = 116, gap = 8;
+		int x = kGridImageW - 10 - 3 * bw - 2 * gap;
+		for (int i = 0; i < 3; i++, x += bw + gap)
+		{
+			fill(image, x, y, bw, 22, i == v.choose ? kGridCellOn : kGridCell);
+			const int tw = 8 * (int)strlen(v.choose_names[i]);
+			grid_text(image, x + (bw - tw) / 2, y + 3, v.choose_names[i], kGridText);
+			if (i == v.choose)
+				frame(image, x - 2, y - 2, bw + 4, 26, 2, kGridCursor);
+		}
+		return;
+	}
 	grid_text(image, 10, kGridImageH - 24, v.footer, kGridDim);
 }
 

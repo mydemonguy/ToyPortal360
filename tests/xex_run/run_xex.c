@@ -1075,7 +1075,18 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	}
 	g_render = 1;
 
-	/* A: makes Batman (the first character) and puts him on the centre pad. */
+	/* A: asks which pad, starting on the centre; A again makes Batman (the
+	 * first character) and puts him there. */
+	press(0x1000, 120);
+	g_render = 0;
+	usleep(300000);
+	/* The pad picker replaces the footer: Left, Centre, Right; Centre lit. */
+	CHECK(fb_pixel(0, GX(326 + 4), GY(295 + 4)) == C_CELL_ON);
+	CHECK(fb_pixel(0, GX(202 + 4), GY(295 + 4)) == C_CELL && fb_pixel(0, GX(450 + 4), GY(295 + 4)) == C_CELL);
+	CHECK(fb_pixel(0, GX(326 - 1), GY(295 + 4)) == C_CURSOR);
+	save_frame(getenv("GRID_PICK_PPM"));
+	g_render = 1;
+	CHECK(!log_contains("Grid: Made and placed Batman"));
 	press(0x1000, 120);
 	char path[64];
 	snprintf(path, sizeof(path), "TPHDD:\\ToyPortal\\Dimensions\\Batman.bin");
@@ -1105,23 +1116,42 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	 * Batman's page uses his file instead of making another. */
 	press(0x0200, 120);
 	press(0x1000, 120);
+	press(0x1000, 120);
 	CHECK(wait_log("Grid: Made and placed", 3000));
 	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[7] == 0);
 	CHECK(count_files("TPHDD:\\ToyPortal\\Dimensions") == 2);
 	press(0x0100, 120);
 	press(0x1000, 120);
-	CHECK(wait_log("Grid: Placed Batman", 3000));
+	press(0x1000, 120);
+	CHECK(wait_log("Grid: Placed Batman (left pad)", 3000));
 	CHECK(count_files("TPHDD:\\ToyPortal\\Dimensions") == 2);
 	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 0); /* centre taken: left pad */
 
-	/* Fill the toy pad (7 spots): Gandalf, Wyldstyle, Aquaman, Benny, Bart. */
-	static const struct { u16 move; const char* name; } fill[5] = {
-		{0x0008, "Gandalf"}, {0x0008, "Wyldstyle"}, {0x0008, "Aquaman"},
+	/* Gandalf: the picker starts on Left (the centre is taken). B goes back to
+	 * the grid without placing him or closing it; then right twice picks the
+	 * right pad. */
+	press(0x0008, 120);
+	press(0x1000, 120);
+	press(0x0008, 120);
+	press(0x2000, 120);
+	usleep(200000);
+	CHECK(!log_contains("Grid closed") && !log_contains("Placed Gandalf") && !log_contains("placed Gandalf"));
+	press(0x1000, 120);
+	press(0x0008, 120);
+	press(0x0008, 120);
+	press(0x1000, 120);
+	CHECK(wait_log("Grid: Made and placed Gandalf (right pad)", 3000));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 3 && rp[7] == 0);
+
+	/* Fill the rest of the toy pad (7 spots): Wyldstyle, Aquaman, Benny, Bart. */
+	static const struct { u16 move; const char* name; } fill[4] = {
+		{0x0008, "Wyldstyle"}, {0x0008, "Aquaman"},
 		{0x0002, "Benny"}, {0x0004, "Bart Simpson"}};
-	for (int i = 0; i < 5; i++)
+	for (int i = 0; i < 4; i++)
 	{
 		char want[64];
 		press(fill[i].move, 120);
+		press(0x1000, 120);
 		press(0x1000, 120);
 		snprintf(want, sizeof(want), "Grid: Made and placed %s", fill[i].name);
 		CHECK(wait_log(want, 3000));
@@ -1131,8 +1161,9 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	 * centre pad. The game sees it leave, then Bane arrive on that pad. */
 	press(0x0004, 120);
 	press(0x1000, 120);
+	press(0x1000, 120);
 	CHECK(wait_log("Grid: Swapping: ", 3000));
-	CHECK(log_contains(" off, Bane on"));
+	CHECK(log_contains(" off, Bane (centre pad) on"));
 	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 1);
 	CHECK(wait_log("Grid: Made and placed Bane", 3000));
 	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 0);

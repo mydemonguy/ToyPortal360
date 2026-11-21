@@ -133,6 +133,11 @@ struct GridView
 	GridCell cells[kGridPerPage];
 	int cell_count;  // cells on this page
 	int cursor;      // index within the page, or -1
+	// Picking a toy pad spot (LEGO Dimensions): drawn instead of the footer.
+	bool choosing;
+	char choose_text[24];      // e.g. "Batman on:"
+	char choose_names[3][16];  // left, centre, right, e.g. "Left 1/3"
+	int choose;                // the highlighted one, 0-2
 };
 
 // Word-wraps `text` into at most `max_lines` lines of `cols` characters
