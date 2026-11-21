@@ -67,6 +67,10 @@ Hold LB + RB + Y for a grid of every figure in the game.
                   then A. B goes back without placing. On a figure
                   that's on already, picking another pad moves it
                   and the fourth box, Off, takes it off.
+  Quick move (LEGO Dimensions, grid closed): LB+RB + d-pad left / up /
+  right moves the figure the grid last put on to the left / centre /
+  right pad. For a Master Build, put Wyldstyle on with the grid, then
+  quick-move her to each section the game's on-screen pad flashes.
   The toy pad's lights show in the footer (Pad L C R) and on the picker's
   boxes, with the colour's name, for puzzles like Master Build.
   B               close

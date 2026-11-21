@@ -484,10 +484,23 @@ static void label_for_key(u32 key, char* out, int n)
 	out[n - 1] = 0;
 }
 
+static u32 s_last_key = 0;     // the figure the grid last put on or moved
+static bool s_have_last = false;
+
 static void note_placed(int slot)
 {
 	if (slot >= 0 && slot < kMaxSpots)
 		s_spot_age[slot] = ++s_age_clock;
+	if (s_kind == kToyDimensions && slot >= 0)
+	{
+		EnterCriticalSection(&g_lock);
+		if (g_router.dim.occupied(slot))
+		{
+			s_last_key = key_at(slot);
+			s_have_last = true;
+		}
+		LeaveCriticalSection(&g_lock);
+	}
 }
 
 static void load_at(const BYTE* data, const char* path, int slot)
@@ -1190,6 +1203,47 @@ static DWORD WINAPI grid_thread(LPVOID)
 	g_menu_open = false;
 	s_open = false;
 	return 0;
+}
+
+// LEGO Dimensions quick move (LB+RB + d-pad left / up / right, grid
+// closed): moves the figure the grid last put on or moved to the left,
+// centre or right pad, for Master Builds and the other pad puzzles where
+// one figure goes from section to section.
+void grid_quick_move(int which)
+{
+	static const u8 pads[3] = {kPadLeft, kPadCenter, kPadRight};
+	if (which < 0 || which > 2)
+		return;
+	if (g_router.kind() != kToyDimensions || s_kind != kToyDimensions || !s_have_last)
+	{
+		notify(L"Toy Portal 360: put a figure on with the grid (LB+RB+Y) first");
+		return;
+	}
+	int idx = -1;
+	for (int i = 0; i < s_item_count && idx < 0; i++)
+		if (s_items[i].key == s_last_key)
+			idx = i;
+	if (idx < 0)
+		return;
+	finish_pending(true);
+	s_footer[0] = 0;
+	const int from = slot_with(s_kind, s_last_key);
+	if (from >= 0)
+		move_to_pad(s_items[idx], from, pads[which]);
+	else
+		place_item(s_items[idx], pads[which]);
+	if (s_footer[0])
+	{
+		wchar_t w[96];
+		int n = 0;
+		const char* prefix = "Toy Portal 360: ";
+		for (const char* p = prefix; *p && n < 95; p++)
+			w[n++] = (wchar_t)*p;
+		for (const char* p = s_footer; *p && n < 95; p++)
+			w[n++] = (wchar_t)(u8)*p;
+		w[n] = 0;
+		notify(w);
+	}
 }
 
 bool grid_start()

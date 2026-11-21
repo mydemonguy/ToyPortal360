@@ -140,6 +140,11 @@ static const char kDefaultIni[] =
 	"; less of the game shows through it.\r\n"
 	"grid_size = big\r\n"
 	"\r\n"
+	"; LEGO Dimensions: with the grid closed, LB+RB + d-pad left / up / right\r\n"
+	"; moves the figure the grid last put on to the left / centre / right pad\r\n"
+	"; (for Master Builds). off turns it off.\r\n"
+	"quick_move = on\r\n"
+	"\r\n"
 	"; 1 = write every portal packet to log.txt (use when something does not work).\r\n"
 	"log = 0\r\n"
 	"\r\n"
@@ -159,6 +164,7 @@ void config_defaults()
 	g_config.combo = XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_BACK;
 	g_config.grid_combo = XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_Y;
 	g_config.grid_small = false;
+	g_config.quick_move = true;
 	g_config.status_interval_ms = 20;
 	g_config.idle_result = 0;
 	g_config.sky_wrap_len = 0;
@@ -214,6 +220,8 @@ void config_load()
 			if (c || _stricmp(val, "off") == 0)
 				g_config.grid_combo = c;
 		}
+		else if (strcmp(key, "quick_move") == 0)
+			g_config.quick_move = _stricmp(val, "off") != 0;
 		else if (strcmp(key, "grid_size") == 0)
 			g_config.grid_small = _stricmp(val, "small") == 0;
 		else if (strcmp(key, "log") == 0)

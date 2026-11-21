@@ -13,6 +13,7 @@ struct Config
 	WORD combo;            // XINPUT_GAMEPAD_* buttons held together to open the menu
 	WORD grid_combo;       // ... and the character grid (0 = off)
 	bool grid_small;       // draw the grid at 1x (faster, smaller)
+	bool quick_move;       // LB+RB + d-pad moves the last grid figure (Dimensions)
 	DWORD status_interval_ms;
 	DWORD idle_result;     // XAM result returned when there is nothing to read
 	DWORD sky_wrap_len;    // length byte for wrapped Skylanders replies (0 = auto)
@@ -77,5 +78,6 @@ void grid_hooks_resolve();
 int grid_patch_module(PLDR_DATA_TABLE_ENTRY m);
 PVOID grid_swap_lookup(PVOID address);
 bool grid_start();
+void grid_quick_move(int which); // 0 left, 1 centre, 2 right (LEGO Dimensions)
 
 #endif

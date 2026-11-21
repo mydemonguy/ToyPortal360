@@ -759,6 +759,14 @@ void menu_poll()
 			continue;
 		}
 		const WORD now = st.Gamepad.wButtons;
+		if (g_config.quick_move && g_title_hooked && !g_menu_open)
+		{
+			static const WORD dirs[3] = {XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_UP, XINPUT_GAMEPAD_DPAD_RIGHT};
+			const WORD shoulders = XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER;
+			for (int i = 0; i < 3; i++)
+				if (combo_pressed(now, s_prev[u], (WORD)(shoulders | dirs[i])))
+					grid_quick_move(i);
+		}
 		const bool grid = combo_pressed(now, s_prev[u], g_config.grid_combo);
 		const bool menu = !grid && combo_pressed(now, s_prev[u], g_config.combo);
 		s_prev[u] = now;

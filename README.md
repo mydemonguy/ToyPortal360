@@ -160,6 +160,7 @@ Hold **LB + RB + Y** for a 4x4 grid of every figure the game knows, drawn over t
 - Move with the **d-pad** or **left stick**. **LB / RB** turn the page.
 - **A** puts the figure under the cursor on the portal. If you have no file for it yet, one is made first, in the same folder and with the same name the Create menu uses. **A** again takes it off.
 - **LEGO Dimensions:** **A** shows a pad picker (**Left / Centre / Right**, with how many spots each has taken). Pick with left/right and press **A**; **B** goes back. For a figure that isn't on yet it starts on the centre pad, or the first pad with room. For a figure that's on already it starts on its pad and has a fourth box, **Off**: pick another pad to move it there, or **Off** to take it off.
+- **Quick move (LEGO Dimensions):** with the grid closed, **LB+RB + d-pad left / up / right** moves the figure the grid last put on (or moved) to the left / centre / right pad, with a pop-up saying what happened. A Master Build has you move Wyldstyle to three sections in turn, as the game's on-screen pad shows: put her on with the grid once, then use quick move for each section. `quick_move = off` turns it off.
 - **Toy pad lights:** the real pad's lights matter in puzzles like Master Build ("place Wyldstyle on the purple glowing panels"). The footer shows the three pads' current colours (**Pad L C R**), and in the picker a lit pad has a border in its colour and its colour's name ("Left Purple").
 - Figures that are on the portal are green, with a white mark in the corner.
 - **B** closes the grid. The game doesn't see your buttons while the grid is open.
@@ -188,6 +189,7 @@ The plugin rereads this file every time a game starts.
 | `combo` | `LB+RB+BACK` | Buttons held to open the menu. Any of: LB RB BACK START UP DOWN LEFT RIGHT LS RS A B X Y. |
 | `grid_combo` | `LB+RB+Y` | Buttons held to open the character grid. `off` turns the grid off. |
 | `grid_size` | `big` | `small` draws the grid at 1x (half the size at 720p). It's four times less drawing, so less of the game shows through. |
+| `quick_move` | `on` | LEGO Dimensions: LB+RB + d-pad left / up / right moves the figure the grid last put on to that pad. `off` turns it off. |
 | `log` | `0` | `1` writes every portal packet to `log.txt`. |
 | `status_interval_ms` | `20` | Gap between idle Skylanders status packets. |
 | `idle_result` | `0` | Result code returned when the game reads and nothing is waiting. |

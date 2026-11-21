@@ -1210,6 +1210,21 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	usleep(200000);
 	CHECK(fb_pixel(0, GX(4), GY(4)) == C_GAME && fb_pixel(1, GX(4), GY(4)) == C_GAME);
 
+	/* Quick move with the grid closed: LB+RB+Left moves Bane (the last one
+	 * the grid put on) to the left pad. It's full, so the figure that has
+	 * been on it longest comes off first. */
+	press(0x0100 | 0x0200 | 0x0004, 200);
+	CHECK(wait_log("Grid: Moved Bane to left (", 3000));
+	CHECK(note_contains("Moved Bane to left"));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 1);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 1);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 0);
+	/* LB+RB+Up: back to the centre, which is free now. */
+	press(0x0100 | 0x0200 | 0x0001, 200);
+	CHECK(wait_log("Grid: Moved Bane to the centre pad", 3000));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 1);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 0);
+
 	g_render_quit = 1;
 	pthread_join(rt, NULL);
 	CHECK(entry((void*)(uintptr_t)g_base, 0, NULL) == 1);
