@@ -754,6 +754,8 @@ static void prepare(Target& t, const SwapRecord& r)
 	// 1x at 640x480, 2x at 720p, 3x at 1080p: the largest that fits in 90%.
 	const u32 sx = t.surface.width * 9 / 10 / kGridImageW, sy = t.surface.height * 9 / 10 / kGridImageH;
 	t.scale = sx < sy ? sx : sy;
+	if (g_config.grid_small && t.scale > 1)
+		t.scale = 1;
 	if (t.scale == 0 && t.surface.width >= (u32)kGridImageW && t.surface.height >= (u32)kGridImageH)
 		t.scale = 1;
 	if (t.scale == 0)
@@ -788,43 +790,62 @@ static void note_newest_swap()
 	prepare(s_targets[0], r);
 }
 
-static void flush_rows(const Target& t)
+// A picture pixel for overlay_blit_fast: the image leaves the picture
+// areas as kOverlaySkip and asks here for their colour.
+static u32 picture_colour(u32 ix, u32 iy, void* ctx)
 {
-	u32 first, end;
-	overlay_row_range(t.surface, t.oy, t.oy + kGridImageH * t.scale, &first, &end);
-	BYTE* base = (BYTE*)t.surface.address;
-	// The front buffer may be cached memory: push our writes out to RAM,
-	// where the display reads them.
-	for (u32 off = first & ~127u; off < end; off += 128)
-	{
-#ifdef TOYPORTAL_FORGE
-		__asm__ volatile("dcbf 0, %0" : : "r"(base + off) : "memory");
-#else
-		__dcbst((int)off, base);
-#endif
-	}
-	__sync();
+	const Target& t = *(const Target*)ctx;
+	const int col = ((int)ix - 7) / (kGridCellW + 6), row = ((int)iy - 30) / (kGridCellH + 6);
+	const int slot = row * kGridCols + col;
+	if (col < 0 || row < 0 || col >= kGridCols || row >= kGridRows)
+		return t.packed[kGridCell];
+	const u32 background = t.packed[s_pic_placed[slot] ? kGridCellOn : kGridCell];
+	int cx, cy;
+	grid_cell_origin(slot, &cx, &cy);
+	const int px = (int)ix - cx - kGridPicX, py = (int)iy - cy - kGridPicY;
+	if (!s_pic_loaded[slot] || px < 0 || py < 0 || px >= kGridPicW || py >= kGridPicH)
+		return background;
+	const u8* a = s_pics[slot] + (py * kGridPicW + px) * 4;
+	return a[0] < 128 ? background : t.colours.pack(a[1], a[2], a[3]);
 }
+
+// Pushes a finished 128-byte line out to RAM, where the display reads it
+// (the front buffer may be cached memory).
+static void line_done(u8* line, void*)
+{
+#ifdef TOYPORTAL_FORGE
+	__asm__ volatile("dcbf 0, %0" : : "r"(line) : "memory");
+#else
+	__dcbst(0, line);
+#endif
+}
+
+static DWORD s_pass_ms_sum = 0;
+static int s_pass_count = 0;
 
 static void blit_all()
 {
+	const DWORD start = GetTickCount();
+	// The newest frame first: it's the one on screen.
 	for (int i = 0; i < 2; i++)
 	{
-		const Target& t = s_targets[i];
+		Target& t = s_targets[i];
 		if (!t.usable)
 			continue;
-		overlay_blit(t.surface, (u8*)t.surface.address, s_image, kGridImageW, kGridImageH, t.scale, t.ox, t.oy, t.packed);
-		for (int p = 0; p < kGridPerPage; p++)
+		overlay_blit_fast(t.surface, (u8*)t.surface.address, s_image, kGridImageW, kGridImageH, t.scale, t.ox, t.oy,
+			t.packed, picture_colour, line_done, &t);
+	}
+	__sync();
+	// How long one pass takes, logged once per opening.
+	if (s_pass_count >= 0)
+	{
+		s_pass_ms_sum += GetTickCount() - start;
+		if (++s_pass_count == 50)
 		{
-			if (!s_pic_loaded[p])
-				continue;
-			int x, y;
-			grid_picture_origin(p, kGridPicW, kGridPicH, &x, &y);
-			overlay_blit_argb(t.surface, (u8*)t.surface.address, s_pics[p], kGridPicW, kGridPicH,
-				t.scale, t.ox + (u32)x * t.scale, t.oy + (u32)y * t.scale, t.colours,
-				&t.packed[s_pic_placed[p] ? kGridCellOn : kGridCell]);
+			log_line("Grid: one drawing pass (both buffers) takes about %u.%u ms",
+				(unsigned)(s_pass_ms_sum / 50), (unsigned)(s_pass_ms_sum * 10 / 50 % 10));
+			s_pass_count = -1;
 		}
-		flush_rows(t);
 	}
 }
 
@@ -928,6 +949,8 @@ static DWORD WINAPI grid_thread(LPVOID)
 	}
 	s_pending.active = false;
 	s_choosing = false;
+	s_pass_ms_sum = 0;
+	s_pass_count = 0;
 	build_items(kind);
 	s_menu.reset(s_item_count);
 	s_footer[0] = 0;

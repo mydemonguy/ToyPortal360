@@ -217,6 +217,105 @@ bool overlay_blit(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32
 	return true;
 }
 
+// Where each 16-byte chunk of a 4 KB tile lands: x / 4 in the low 3 bits,
+// y in the next 5. The same for every tile (see tiled_row / tiled_col).
+static u8 s_chunk_x[256], s_chunk_y[256];
+static bool s_chunks_ready = false;
+
+static void make_chunk_table()
+{
+	for (u32 y = 0; y < 32; y++)
+	{
+		u32 rh, rl;
+		tiled_row(y, 32, &rh, &rl);
+		for (u32 g = 0; g < 8; g++)
+		{
+			u32 cl;
+			tiled_col(g * 4, &cl);
+			const u32 chunk = ((cl ^ rl) >> 4) & 255;
+			s_chunk_x[chunk] = (u8)g;
+			s_chunk_y[chunk] = (u8)y;
+		}
+	}
+	s_chunks_ready = true;
+}
+
+bool overlay_blit_fast(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32 ih, u32 scale,
+	u32 ox, u32 oy, const u32* packed, OverlaySkipColour skip_colour, OverlayLineDone line_done, void* ctx)
+{
+	static u16 col_src[4096], row_src[4096];
+	const u32 w = iw * scale, h = ih * scale;
+	if (!mem || !scale || (ox & 3) || (w & 3) || w > 4096 || h > 4096 || ox + w > s.width || oy + h > s.height)
+		return false;
+	for (u32 i = 0; i < w; i++)
+		col_src[i] = (u16)(i / scale);
+	for (u32 i = 0; i < h; i++)
+		row_src[i] = (u16)(i / scale);
+
+	if (!s.tiled)
+	{
+		for (u32 y = oy; y < oy + h; y++)
+		{
+			const u32 iy = row_src[y - oy];
+			const u8* src = image + iy * iw;
+			u8* row = mem + y * s.pitch * 4;
+			for (u32 x = ox; x < ox + w; x++)
+			{
+				const u32 ix = col_src[x - ox];
+				const u8 c = src[ix];
+				if (c != kOverlaySkip)
+					store_word(row + x * 4, packed[c]);
+				else if (skip_colour)
+					store_word(row + x * 4, skip_colour(ix, iy, ctx));
+			}
+			if (line_done)
+				for (u32 off = ((y * s.pitch + ox) * 4) & ~127u; off < (y * s.pitch + ox + w) * 4; off += 128)
+					line_done(mem + off, ctx);
+		}
+		return true;
+	}
+
+	if (!s_chunks_ready)
+		make_chunk_table();
+	const u32 tiles_across = s.pitch >> 5;
+	for (u32 ty = oy >> 5; ty <= (oy + h - 1) >> 5; ty++)
+	{
+		for (u32 tx = ox >> 5; tx <= (ox + w - 1) >> 5; tx++)
+		{
+			u8* tile = mem + ((ty * tiles_across + tx) << 12);
+			for (u32 line = 0; line < 32; line++) // 32 lines of 128 bytes
+			{
+				bool wrote = false;
+				for (u32 c = line * 8; c < line * 8 + 8; c++)
+				{
+					const u32 y = (ty << 5) + s_chunk_y[c];
+					const u32 x = (tx << 5) + s_chunk_x[c] * 4;
+					if (y < oy || y >= oy + h || x < ox || x >= ox + w)
+						continue;
+					const u32 iy = row_src[y - oy];
+					const u8* src = image + iy * iw;
+					u8* p = tile + (c << 4);
+					for (u32 j = 0; j < 4; j++)
+					{
+						const u32 ix = col_src[x - ox + j];
+						const u8 v = src[ix];
+						if (v != kOverlaySkip)
+							store_word(p + 4 * j, packed[v]);
+						else if (skip_colour)
+							store_word(p + 4 * j, skip_colour(ix, iy, ctx));
+						else
+							continue;
+						wrote = true;
+					}
+				}
+				if (wrote && line_done)
+					line_done(tile + (line << 7), ctx);
+			}
+		}
+	}
+	return true;
+}
+
 void overlay_packer_init(const OverlaySurface& s, OverlayPacker* p)
 {
 	for (u32 i = 0; i < 256; i++)

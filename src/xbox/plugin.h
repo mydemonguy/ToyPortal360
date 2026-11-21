@@ -12,6 +12,7 @@ struct Config
 	ToyKind device;        // kToyUnknown = auto-detect
 	WORD combo;            // XINPUT_GAMEPAD_* buttons held together to open the menu
 	WORD grid_combo;       // ... and the character grid (0 = off)
+	bool grid_small;       // draw the grid at 1x (faster, smaller)
 	DWORD status_interval_ms;
 	DWORD idle_result;     // XAM result returned when there is nothing to read
 	DWORD sky_wrap_len;    // length byte for wrapped Skylanders replies (0 = auto)

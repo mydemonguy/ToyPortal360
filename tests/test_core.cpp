@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <algorithm>
+#include <vector>
 #include "../src/core/toy_router.h"
 #include "../src/core/figure_db.h"
 #include "../src/core/tiny_crypto.h"

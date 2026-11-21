@@ -62,6 +62,18 @@ enum { kOverlaySkip = 0xFF };
 bool overlay_blit(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32 ih, u32 scale,
 	u32 ox, u32 oy, const u32* packed);
 
+// The same picture as overlay_blit, written in the order the bytes sit in
+// memory: tile by tile for a tiled surface, so every 128-byte line is
+// finished in one go (much faster when the memory isn't cached). Pixels
+// that are kOverlaySkip in the image get `skip_colour(ix, iy, ctx)` (image
+// coordinates at 1x), or are left alone if it is NULL. `line_done` (may be
+// NULL) is called once for each 128-byte line written, after its last
+// write. Same refusals as overlay_blit.
+typedef u32 (*OverlaySkipColour)(u32 ix, u32 iy, void* ctx);
+typedef void (*OverlayLineDone)(u8* line, void* ctx);
+bool overlay_blit_fast(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32 ih, u32 scale,
+	u32 ox, u32 oy, const u32* packed, OverlaySkipColour skip_colour, OverlayLineDone line_done, void* ctx);
+
 // overlay_pack() for any colour, from three tables: the R, G and B fields
 // never share bits, so pack(r, g, b) == r_[r] | g_[g] | b_[b].
 struct OverlayPacker

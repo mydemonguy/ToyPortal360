@@ -212,6 +212,67 @@ static void test_overlay_blit()
 	CHECK(!overlay_blit(big, &mem2[0], image, kGridImageW, kGridImageH, 1, 30, 0, packed));
 }
 
+static u32 fast_skip_colour(u32 ix, u32 iy, void*) { return 0xA0000000u | (iy << 12) | ix; }
+static void fast_line_done(u8* line, void* ctx)
+{
+	std::vector<u8*>* lines = (std::vector<u8*>*)ctx;
+	lines->push_back(line);
+}
+
+static void test_overlay_blit_fast()
+{
+	// Exactly what overlay_blit writes, plus the picture pixels from the
+	// callback, and each 128-byte line reported once.
+	static u8 image[kGridImageW * kGridImageH];
+	for (int i = 0; i < kGridImageW * kGridImageH; i++)
+		image[i] = (u8)(rnd8() % kGridColors);
+	for (int i = 0; i < kGridImageW * kGridImageH; i += 41)
+		image[i] = kOverlaySkip;
+	for (int y = 40; y < 80; y++)
+		for (int x = 100; x < 228; x++)
+			image[y * kGridImageW + x] = kOverlaySkip;
+	const u32 cases[5][4] = {{640, 480, 1, 1}, {1280, 720, 2, 1}, {1920, 1080, 3, 1}, {1280, 720, 2, 0}, {1280, 720, 1, 1}};
+	for (int t = 0; t < 5; t++)
+	{
+		OverlaySurface s = make_surface(cases[t][0], cases[t][1], cases[t][3] != 0, kOverlay8888, 2, kSwizzleZYXW);
+		u32 packed[kGridColors];
+		for (int c = 0; c < kGridColors; c++)
+			packed[c] = overlay_pack(s, kGridPalette[c][0], kGridPalette[c][1], kGridPalette[c][2]);
+		const u32 scale = cases[t][2], ox = t ? 64 + 4 * t : 32, oy = t ? 40 + 3 * t : 88;
+		std::vector<u8> a(overlay_span(s), 0xEE), b(overlay_span(s), 0xEE), c(overlay_span(s), 0xEE);
+		CHECK(overlay_blit(s, &a[0], image, kGridImageW, kGridImageH, scale, ox, oy, packed));
+		std::vector<u8*> lines;
+		CHECK(overlay_blit_fast(s, &b[0], image, kGridImageW, kGridImageH, scale, ox, oy, packed, NULL, fast_line_done, &lines));
+		CHECK(a == b);
+		// Every line that changed was reported, each once.
+		std::sort(lines.begin(), lines.end());
+		CHECK(std::adjacent_find(lines.begin(), lines.end()) == lines.end());
+		int missed = 0;
+		for (size_t off = 0; off < a.size(); off += 128)
+			if (memcmp(&a[off], std::vector<u8>(128, 0xEE).data(), 128) != 0 &&
+				!std::binary_search(lines.begin(), lines.end(), &b[0] + off))
+				missed++;
+		CHECK(missed == 0);
+		// With a picture callback the skipped pixels get its colour.
+		CHECK(overlay_blit_fast(s, &c[0], image, kGridImageW, kGridImageH, scale, ox, oy, packed, fast_skip_colour, NULL, NULL));
+		int wrong = 0;
+		for (u32 y = oy; y < oy + kGridImageH * scale; y++)
+			for (u32 x = ox; x < ox + kGridImageW * scale; x++)
+			{
+				const u32 ix = (x - ox) / scale, iy = (y - oy) / scale;
+				const u32 v = rd_be32(&c[overlay_offset(s, x, y)]);
+				const u8 col = image[iy * kGridImageW + ix];
+				if (v != (col == kOverlaySkip ? fast_skip_colour(ix, iy, NULL) : packed[col]))
+					wrong++;
+			}
+		CHECK(wrong == 0);
+	}
+	OverlaySurface big = make_surface(640, 480, true, kOverlay8888, 2, kSwizzleZYXW);
+	std::vector<u8> mem2(overlay_span(big));
+	u32 packed[kGridColors] = {0};
+	CHECK(!overlay_blit_fast(big, &mem2[0], image, kGridImageW, kGridImageH, 1, 30, 0, packed, NULL, NULL, NULL));
+}
+
 static void test_grid_wrap()
 {
 	char l[3][32];
@@ -533,6 +594,7 @@ static void test_grid()
 	test_overlay_tiling();
 	test_overlay_pack_and_fetch();
 	test_overlay_blit();
+	test_overlay_blit_fast();
 	test_grid_wrap();
 	test_grid_menu();
 	test_grid_input();

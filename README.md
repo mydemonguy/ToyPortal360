@@ -186,6 +186,7 @@ The plugin rereads this file every time a game starts.
 | `device` | `auto` | Force `skylanders`, `dimensions` or `infinity`. |
 | `combo` | `LB+RB+BACK` | Buttons held to open the menu. Any of: LB RB BACK START UP DOWN LEFT RIGHT LS RS A B X Y. |
 | `grid_combo` | `LB+RB+Y` | Buttons held to open the character grid. `off` turns the grid off. |
+| `grid_size` | `big` | `small` draws the grid at 1x (half the size at 720p). It's four times less drawing, so less of the game shows through. |
 | `log` | `0` | `1` writes every portal packet to `log.txt`. |
 | `status_interval_ms` | `20` | Gap between idle Skylanders status packets. |
 | `idle_result` | `0` | Result code returned when the game reads and nothing is waiting. |

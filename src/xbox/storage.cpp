@@ -136,6 +136,10 @@ static const char kDefaultIni[] =
 	"; Buttons held together to open the character grid (off = no grid).\r\n"
 	"grid_combo = LB+RB+Y\r\n"
 	"\r\n"
+	"; big or small. small draws the grid at half the size, which is faster, so\r\n"
+	"; less of the game shows through it.\r\n"
+	"grid_size = big\r\n"
+	"\r\n"
 	"; 1 = write every portal packet to log.txt (use when something does not work).\r\n"
 	"log = 0\r\n"
 	"\r\n"
@@ -154,6 +158,7 @@ void config_defaults()
 	g_config.device = kToyUnknown;
 	g_config.combo = XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_BACK;
 	g_config.grid_combo = XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_Y;
+	g_config.grid_small = false;
 	g_config.status_interval_ms = 20;
 	g_config.idle_result = 0;
 	g_config.sky_wrap_len = 0;
@@ -209,6 +214,8 @@ void config_load()
 			if (c || _stricmp(val, "off") == 0)
 				g_config.grid_combo = c;
 		}
+		else if (strcmp(key, "grid_size") == 0)
+			g_config.grid_small = _stricmp(val, "small") == 0;
 		else if (strcmp(key, "log") == 0)
 			g_config.log_traffic = atoi(val) != 0;
 		else if (strcmp(key, "status_interval_ms") == 0)
