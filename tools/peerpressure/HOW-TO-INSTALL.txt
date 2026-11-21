@@ -1,10 +1,11 @@
 ToyPortal360 for Peer Pressure - setup
 =====================================
 
-Lets LEGO Dimensions (and, untested so far, Skylanders and Disney Infinity)
-on an Xbox 360 running Peer Pressure use virtual figures instead of a real
-Toy Pad or portal. Tested on a console with LEGO Dimensions (Games on Demand,
-title ID 5752084B).
+Lets LEGO Dimensions, Disney Infinity and Skylanders on an Xbox 360 running
+Peer Pressure use virtual figures instead of a real Toy Pad, base or portal.
+Tested on a console with LEGO Dimensions (Games on Demand, title ID 5752084B)
+and Disney Infinity 3.0 (42560832). Skylanders Imaginators (41560930) finds
+the portal; wait until you're past its title screen before opening the menu.
 
 What you need
 -------------
@@ -63,7 +64,9 @@ Hold LB + RB + Y for a grid of every figure in the game.
   A               put the figure on (makes its file if you have none)
   A again         take it off
   B               close
-Figures on the pad are green. (New and not yet tested on a console.)
+Figures on the pad are green. If every spot a piece can use is taken, A
+takes off the one that has been on longest and puts the new one there.
+Tested on a console in LEGO Dimensions and Disney Infinity 3.0.
 
 Adding your own pictures
 ------------------------
@@ -96,7 +99,8 @@ If nothing happens
   both files are in the game's folder and named exactly as above.
 - Other games: use the sideload.ini from NextToGame\<that game>\. Its title
   ID must match the game (press Guide in the game or check Aurora's game
-  details). Skylanders and Disney Infinity have not been tried on a console.
+  details). Games other than LEGO Dimensions, Disney Infinity 3.0 and
+  Skylanders Imaginators have not been tried on a console yet.
 - Disc copies have no game folder to copy into: use the SideLoading folder
   instead (copy its .ini files and the .xex to Hdd1:\PeerPressure\SideLoading\).
   That route has not been confirmed on a console yet.
