@@ -349,9 +349,16 @@ void InfinityBase::handle_command(const u8* buf, u32 len)
 	{
 	case 0x80: // Activate: fixed base info
 	{
+		// RPCS3 and Dolphin always answer with sequence 0, which matches the
+		// first activate on PS3 and Wii U. On a console Disney Infinity 3.0 kept
+		// re-sending activate (sequence 1, 2, ...) once a second, never moved on
+		// to seed/challenge, and gave up after sequence 0x3F. Like every other
+		// reply, echo the request's sequence and fix the checksum to match.
 		static const u8 info[24] = {0xAA, 0x15, 0x00, 0x00, 0x0F, 0x01, 0x00, 0x03, 0x02, 0x09, 0x09, 0x43,
 			0x20, 0x32, 0x62, 0x36, 0x36, 0x4B, 0x34, 0x99, 0x67, 0x31, 0x93, 0x8C};
 		memcpy(q, info, sizeof(info));
+		q[2] = sequence;
+		q[23] = checksum(q, 23);
 		break;
 	}
 	case 0x81: // Seed the RNG from a scrambled value

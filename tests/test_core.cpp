@@ -442,6 +442,22 @@ static void test_inf_session()
 	cmd[0] = 0xFF; cmd[1] = 0x03; cmd[2] = 0x80; cmd[3] = 0x01;
 	CHECK(r.on_write(cmd, 32) && r.kind() == kToyInfinity);
 	CHECK(r.on_read(reply, 32, 0) == 32 && reply[0] == 0xAA && reply[1] == 0x15);
+	CHECK(reply[2] == 0x01); // the reply carries the request's sequence
+	{
+		u32 sum = 0;
+		for (int i = 0; i < 23; i++) sum += reply[i];
+		CHECK(reply[23] == (u8)sum);
+	}
+	// Sequence 0 gives exactly RPCS3's and Dolphin's fixed reply.
+	{
+		ToyRouter r0;
+		r0.reset(kToyUnknown);
+		memset(cmd, 0, 32);
+		cmd[0] = 0xFF; cmd[1] = 0x03; cmd[2] = 0x80; cmd[3] = 0x00;
+		r0.on_write(cmd, 32);
+		r0.on_read(reply, 32, 0);
+		CHECK(reply[2] == 0x00 && reply[23] == 0x8C);
+	}
 
 	// Seed (0x81) then challenge (0x83): the reply descrambles to the RNG's next value.
 	u8 sc[8];
