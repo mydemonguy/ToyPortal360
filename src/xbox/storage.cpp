@@ -73,6 +73,16 @@ void storage_init()
 	CreateDirectory(sub, NULL);
 	_snprintf(sub, sizeof(sub), "%s\\Infinity", g_root);
 	CreateDirectory(sub, NULL);
+	// Empty folders for the player's own pictures (see grid.cpp), so it's
+	// clear where they go. Toy Portal 360 ships no pictures.
+	_snprintf(sub, sizeof(sub), "%s\\Pictures", g_root);
+	CreateDirectory(sub, NULL);
+	static const char* const kGames[3] = {"Skylanders", "Dimensions", "Infinity"};
+	for (int i = 0; i < 3; i++)
+	{
+		_snprintf(sub, sizeof(sub), "%s\\Pictures\\%s", g_root, kGames[i]);
+		CreateDirectory(sub, NULL);
+	}
 }
 
 // ---- settings ---------------------------------------------------------------
@@ -241,6 +251,30 @@ void figure_folder(ToyKind kind, char* out, int out_size)
 	_snprintf(out, out_size, "%s\\%s", g_root,
 		kind == kToyDimensions ? "Dimensions" : kind == kToyInfinity ? "Infinity" : "Skylanders");
 	out[out_size - 1] = 0;
+}
+
+void picture_folder(ToyKind kind, char* out, int out_size)
+{
+	_snprintf(out, out_size, "%s\\Pictures\\%s", g_root,
+		kind == kToyDimensions ? "Dimensions" : kind == kToyInfinity ? "Infinity" : "Skylanders");
+	out[out_size - 1] = 0;
+}
+
+DWORD read_small_file(const char* path, BYTE* out, DWORD max)
+{
+	HANDLE f = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (f == INVALID_HANDLE_VALUE)
+		return kNoFile;
+	// Ask for one byte more than fits, to notice a file that is too big.
+	DWORD got = 0, more = 0;
+	BYTE extra;
+	BOOL ok = ReadFile(f, out, max, &got, NULL);
+	if (ok && got == max)
+		ok = ReadFile(f, &extra, 1, &more, NULL);
+	CloseHandle(f);
+	if (!ok)
+		return kNoFile;
+	return more ? max + 1 : got;
 }
 
 static bool name_contains(const char* hay, const char* needle)

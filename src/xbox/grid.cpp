@@ -12,6 +12,11 @@
 // next frame covers it again once it closes. While it is open the game's
 // controller reads (XamInputGetState and the keystroke functions) return
 // nothing, so the game does not react to the buttons used in the grid.
+//
+// Pictures: Toy Portal 360 ships none. A player can put their own (for
+// example photos of their figures, converted by tools/make_pictures.py) in
+// TPHDD:\ToyPortal\Pictures\<game>\<name>.tpi; the square then shows
+// the picture with the name under it.
 #include "plugin.h"
 #include "../core/figure_db.h"
 #include "../core/grid_menu.h"
@@ -278,6 +283,89 @@ static void item_label(const GridItem& it, char* out, int n)
 	out[n - 1] = 0;
 }
 
+// ---- the player's pictures ----------------------------------------------------
+
+// Only the shown page's pictures are kept (in a fixed buffer); what has no
+// picture, or a bad one, is remembered so the disk is asked once per opening.
+enum { kPicUnknown, kPicMissing, kPicBad, kPicFound };
+static u8 s_pic_state[kMaxItems];
+// Each shown picture fills its square's whole picture area: centred, with
+// see-through pixels round it (drawn in the square's colour).
+static u8 s_pics[kGridPerPage][kGridPicW * kGridPicH * 4];
+static u8 s_pic_file[kTpiMaxBytes];
+static bool s_pic_loaded[kGridPerPage];
+static bool s_pic_placed[kGridPerPage]; // as last drawn into s_image
+static int s_pic_page = -1;
+
+// The file names a figure's picture may have: its name as figure files
+// are named, then its number (Skylanders: "id-variant", then "id").
+static int picture_names(const GridItem& it, char (*out)[48])
+{
+	int n = 0;
+	char safe[48];
+	safe_file_name(it.name, safe, sizeof(safe));
+	_snprintf(out[n++], 48, "%s.tpi", safe);
+	if (s_kind == kToySkylanders)
+	{
+		const unsigned id = it.key >> 16, variant = it.key & 0xFFFF;
+		if (variant)
+			_snprintf(out[n++], 48, "%u-%u.tpi", id, variant);
+		_snprintf(out[n++], 48, "%u.tpi", id);
+	}
+	else
+		_snprintf(out[n++], 48, "%u.tpi", (unsigned)it.key);
+	for (int i = 0; i < n; i++)
+		out[i][47] = 0;
+	return n;
+}
+
+static void load_picture(int slot, int item)
+{
+	s_pic_loaded[slot] = false;
+	if (item >= s_item_count || s_pic_state[item] == kPicMissing || s_pic_state[item] == kPicBad)
+		return;
+	char folder[96], names[3][48], path[200];
+	picture_folder(s_kind, folder, sizeof(folder));
+	const int n = picture_names(s_items[item], names);
+	for (int i = 0; i < n; i++)
+	{
+		_snprintf(path, sizeof(path), "%s\\%s", folder, names[i]);
+		path[sizeof(path) - 1] = 0;
+		const DWORD got = read_small_file(path, s_pic_file, kTpiMaxBytes);
+		if (got == kNoFile)
+			continue;
+		u32 w, h;
+		const char* why = got > (DWORD)kTpiMaxBytes ? "too big (largest is 128x38)" : tpi_check(s_pic_file, got, &w, &h);
+		if (why)
+		{
+			s_pic_state[item] = kPicBad;
+			log_line("Grid: picture %s skipped: %s", names[i], why);
+			return;
+		}
+		if (s_pic_state[item] != kPicFound)
+			log_line("Grid: picture %s shown (%ux%u)", names[i], (unsigned)w, (unsigned)h);
+		s_pic_state[item] = kPicFound;
+		memset(s_pics[slot], 0, sizeof(s_pics[slot])); // all see-through
+		int px, py, ax, ay;
+		grid_picture_origin(0, w, h, &px, &py);
+		grid_picture_origin(0, kGridPicW, kGridPicH, &ax, &ay);
+		for (u32 row = 0; row < h; row++)
+			memcpy(s_pics[slot] + (((py - ay) + row) * kGridPicW + (px - ax)) * 4, s_pic_file + kTpiHeader + row * w * 4, w * 4);
+		s_pic_loaded[slot] = true;
+		return;
+	}
+	s_pic_state[item] = kPicMissing;
+}
+
+static void load_page_pictures(int page)
+{
+	if (page == s_pic_page)
+		return;
+	s_pic_page = page;
+	for (int i = 0; i < kGridPerPage; i++)
+		load_picture(i, page * kGridPerPage + i);
+}
+
 // ---- place / remove ---------------------------------------------------------
 
 static char s_footer[72];
@@ -415,6 +503,7 @@ struct Target
 	bool usable;
 	u32 scale, ox, oy;
 	u32 packed[kGridColors];
+	OverlayPacker colours; // for the pictures
 };
 static Target s_targets[2]; // the two most recent different front buffers
 static u8 s_image[kGridImageW * kGridImageH];
@@ -465,6 +554,7 @@ static void prepare(Target& t, const SwapRecord& r)
 	t.oy = (t.surface.height - kGridImageH * t.scale) / 2;
 	for (int c = 0; c < kGridColors; c++)
 		t.packed[c] = overlay_pack(t.surface, kGridPalette[c][0], kGridPalette[c][1], kGridPalette[c][2]);
+	overlay_packer_init(t.surface, &t.colours);
 	t.usable = true;
 	log_line("Grid: drawing on front buffer %s at %ux", what, (unsigned)t.scale);
 }
@@ -512,6 +602,16 @@ static void blit_all()
 		if (!t.usable)
 			continue;
 		overlay_blit(t.surface, (u8*)t.surface.address, s_image, kGridImageW, kGridImageH, t.scale, t.ox, t.oy, t.packed);
+		for (int p = 0; p < kGridPerPage; p++)
+		{
+			if (!s_pic_loaded[p])
+				continue;
+			int x, y;
+			grid_picture_origin(p, kGridPicW, kGridPicH, &x, &y);
+			overlay_blit_argb(t.surface, (u8*)t.surface.address, s_pics[p], kGridPicW, kGridPicH,
+				t.scale, t.ox + (u32)x * t.scale, t.oy + (u32)y * t.scale, t.colours,
+				&t.packed[s_pic_placed[p] ? kGridCellOn : kGridCell]);
+		}
 		flush_rows(t);
 	}
 }
@@ -532,19 +632,25 @@ static u32 render(bool draw)
 	const bool message = s_footer[0] && (int)(s_footer_until - GetTickCount()) > 0;
 	strncpy(v.footer, message ? s_footer : "A: place/remove   LB/RB: page   B: close", sizeof(v.footer) - 1);
 	const int first = s_menu.page() * kGridPerPage;
+	load_page_pictures(s_menu.page());
 	u32 state = (u32)s_menu.cursor() * 2654435761u ^ (message ? 0x80000000u : 0) ^ (u32)(size_t)s_footer_until;
 	for (int i = 0; i < kGridPerPage && first + i < s_item_count; i++)
 	{
 		const GridItem& it = s_items[first + i];
 		item_label(it, v.cells[i].name, sizeof(v.cells[i].name));
 		v.cells[i].placed = slot_with(s_kind, it.key) >= 0;
+		v.cells[i].picture = s_pic_loaded[i];
 		if (v.cells[i].placed)
 			state ^= 0x9E3779B9u * (u32)(i + 1);
 		v.cell_count = i + 1;
 	}
 	v.cursor = s_menu.cursor() - first;
 	if (draw)
+	{
 		grid_render(s_image, v);
+		for (int i = 0; i < kGridPerPage; i++)
+			s_pic_placed[i] = v.cells[i].placed;
+	}
 	return state;
 }
 
@@ -585,6 +691,9 @@ static DWORD WINAPI grid_thread(LPVOID)
 	build_items(kind);
 	s_menu.reset(s_item_count);
 	s_footer[0] = 0;
+	memset(s_pic_state, kPicUnknown, sizeof(s_pic_state)); // pictures added since are seen
+	memset(s_pic_loaded, 0, sizeof(s_pic_loaded));
+	s_pic_page = -1;
 	memset(s_targets, 0, sizeof(s_targets));
 	s_problem[0] = 0;
 

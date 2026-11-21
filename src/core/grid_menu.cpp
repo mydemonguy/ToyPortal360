@@ -241,16 +241,62 @@ void grid_render(u8* image, const GridView& v)
 		grid_cell_origin(i, &x, &y);
 		const GridCell& c = v.cells[i];
 		fill(image, x, y, kGridCellW, kGridCellH, c.placed ? kGridCellOn : kGridCell);
-		if (c.placed) // a white mark in the corner as well as the colour
-			fill(image, x + kGridCellW - 10, y + 5, 6, 6, kGridText);
-		char lines[kGridLines][32];
-		const int n = grid_wrap(c.name, kGridLineChars, kGridLines, lines);
-		const int top = y + 4 + (kGridLines - n) * 8;
-		for (int l = 0; l < n; l++)
-			grid_text(image, x + 5, top + l * 16, lines[l], kGridText);
+		if (c.picture)
+		{
+			// The picture is full colour, so it is copied over the top part
+			// separately; this image leaves that part alone, so the two never
+			// take turns there. The square's colour stays round it and on the
+			// strip, so a placed figure still shows green.
+			fill(image, x + kGridPicX, y + kGridPicY, kGridPicW, kGridPicH, kGridSkip);
+			char line[1][32];
+			if (grid_wrap(c.name, kGridLineChars - (c.placed ? 1 : 0), 1, line))
+				grid_text(image, x + 4, y + kGridStripY + 1, line[0], kGridText);
+			if (c.placed)
+				fill(image, x + kGridCellW - 10, y + kGridStripY + 6, 6, 6, kGridText);
+		}
+		else
+		{
+			if (c.placed) // a white mark in the corner as well as the colour
+				fill(image, x + kGridCellW - 10, y + 5, 6, 6, kGridText);
+			char lines[kGridLines][32];
+			const int n = grid_wrap(c.name, kGridLineChars, kGridLines, lines);
+			const int top = y + (kGridCellH - 16 * kGridLines) / 2 + (kGridLines - n) * 8;
+			for (int l = 0; l < n; l++)
+				grid_text(image, x + 5, top + l * 16, lines[l], kGridText);
+		}
 		if (i == v.cursor)
 			frame(image, x - 2, y - 2, kGridCellW + 4, kGridCellH + 4, 4, kGridCursor);
 	}
 
 	grid_text(image, 10, kGridImageH - 24, v.footer, kGridDim);
+}
+
+// ---- the user's pictures -------------------------------------------------------
+
+const char* tpi_check(const u8* file, u32 size, u32* w, u32* h)
+{
+	*w = *h = 0;
+	if (!file || size < (u32)kTpiHeader)
+		return "too short";
+	if (memcmp(file, "TPI1", 4) != 0)
+		return "not a .tpi file (make it with make_pictures.py)";
+	const u32 pw = rd_be16(file + 4), ph = rd_be16(file + 6);
+	if (pw == 0 || ph == 0)
+		return "empty picture";
+	if (pw > (u32)kGridPicW || ph > (u32)kGridPicH)
+		return "too big (largest is 128x38)";
+	if (size < kTpiHeader + pw * ph * 4)
+		return "cut short";
+	if (size > kTpiHeader + pw * ph * 4)
+		return "wrong size";
+	*w = pw;
+	*h = ph;
+	return NULL;
+}
+
+void grid_picture_origin(int i, u32 w, u32 h, int* x, int* y)
+{
+	grid_cell_origin(i, x, y);
+	*x += kGridPicX + (int)((kGridPicW - (w < (u32)kGridPicW ? w : (u32)kGridPicW)) / 2);
+	*y += kGridPicY + (int)((kGridPicH - (h < (u32)kGridPicH ? h : (u32)kGridPicH)) / 2);
 }

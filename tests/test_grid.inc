@@ -171,6 +171,12 @@ static void test_overlay_blit()
 	static u8 image[kGridImageW * kGridImageH];
 	for (int i = 0; i < kGridImageW * kGridImageH; i++)
 		image[i] = (u8)(rnd8() % kGridColors);
+	// Some pixels are left for a picture: single ones and a whole block.
+	for (int i = 0; i < kGridImageW * kGridImageH; i += 37)
+		image[i] = kOverlaySkip;
+	for (int y = 40; y < 80; y++)
+		for (int x = 100; x < 228; x++)
+			image[y * kGridImageW + x] = kOverlaySkip;
 	// width, height, scale, tiled
 	const u32 cases[4][4] = {{640, 480, 1, 1}, {1280, 720, 2, 1}, {1920, 1080, 3, 1}, {1280, 720, 2, 0}};
 	for (int t = 0; t < 4; t++)
@@ -188,9 +194,10 @@ static void test_overlay_blit()
 			{
 				const u32 v = rd_be32(&mem[overlay_offset(s, x, y)]);
 				const bool inside = x >= ox && y >= oy && x < ox + kGridImageW * scale && y < oy + kGridImageH * scale;
-				if (inside && v != packed[image[((y - oy) / scale) * kGridImageW + (x - ox) / scale]])
+				const u8 c = inside ? image[((y - oy) / scale) * kGridImageW + (x - ox) / scale] : 0;
+				if (inside && c != kOverlaySkip && v != packed[c])
 					wrong++;
-				if (!inside && v != 0xEEEEEEEEu)
+				if ((!inside || c == kOverlaySkip) && v != 0xEEEEEEEEu)
 					touched_outside++;
 			}
 		CHECK(wrong == 0 && touched_outside == 0);
@@ -357,6 +364,170 @@ static void test_grid_render()
 #undef PX
 }
 
+static std::vector<u8> make_tpi(u32 w, u32 h)
+{
+	std::vector<u8> f(kTpiHeader + w * h * 4);
+	memcpy(&f[0], "TPI1", 4);
+	wr_be16(&f[4], (u16)w);
+	wr_be16(&f[6], (u16)h);
+	for (u32 i = 0; i < w * h; i++)
+	{
+		u8* p = &f[kTpiHeader + i * 4];
+		p[0] = (i % 7 == 0) ? 0x00 : 0xFF; // some see-through pixels
+		p[1] = (u8)(i * 3);
+		p[2] = (u8)(i * 5 + 1);
+		p[3] = (u8)(i * 11 + 2);
+	}
+	return f;
+}
+
+static void test_tpi_check()
+{
+	u32 w = 99, h = 99;
+	std::vector<u8> good = make_tpi(30, 20);
+	CHECK(tpi_check(&good[0], (u32)good.size(), &w, &h) == NULL && w == 30 && h == 20);
+	std::vector<u8> full = make_tpi(kGridPicW, kGridPicH);
+	CHECK(tpi_check(&full[0], (u32)full.size(), &w, &h) == NULL && (u32)full.size() == (u32)kTpiMaxBytes);
+	// Cut short, one byte too many, wrong magic, too big, empty, too short.
+	CHECK(tpi_check(&good[0], (u32)good.size() - 1, &w, &h) != NULL && w == 0 && h == 0);
+	std::vector<u8> longer = good;
+	longer.push_back(0);
+	CHECK(tpi_check(&longer[0], (u32)longer.size(), &w, &h) != NULL);
+	std::vector<u8> png = good;
+	memcpy(&png[0], "\x89PNG", 4);
+	CHECK(tpi_check(&png[0], (u32)png.size(), &w, &h) != NULL);
+	std::vector<u8> wide = make_tpi(kGridPicW + 1, 10);
+	CHECK(tpi_check(&wide[0], (u32)wide.size(), &w, &h) != NULL);
+	std::vector<u8> tall = make_tpi(10, kGridPicH + 1);
+	CHECK(tpi_check(&tall[0], (u32)tall.size(), &w, &h) != NULL);
+	std::vector<u8> empty = make_tpi(0, 5);
+	CHECK(tpi_check(&empty[0], (u32)empty.size(), &w, &h) != NULL);
+	CHECK(tpi_check(&good[0], 5, &w, &h) != NULL && tpi_check(NULL, 0, &w, &h) != NULL);
+	// A picture smaller than the area is centred in it.
+	int x, y, cx, cy;
+	grid_cell_origin(5, &cx, &cy);
+	grid_picture_origin(5, kGridPicW, kGridPicH, &x, &y);
+	CHECK(x == cx + kGridPicX && y == cy + kGridPicY);
+	grid_picture_origin(5, kGridPicW - 20, kGridPicH - 10, &x, &y);
+	CHECK(x == cx + kGridPicX + 10 && y == cy + kGridPicY + 5);
+	CHECK(kGridStripY >= kGridPicY + kGridPicH && kGridStripY + 16 <= kGridCellH);
+}
+
+static void test_overlay_packer()
+{
+	// The three tables give exactly overlay_pack for every format and order.
+	const u32 swz[2] = {kSwizzleZYXW, kSwizzleXYZW};
+	int wrong = 0;
+	for (u32 fmt = 0; fmt < 2; fmt++)
+		for (u32 endian = 0; endian < 4; endian++)
+			for (int z = 0; z < 2; z++)
+			{
+				OverlaySurface s = make_surface(640, 480, true, fmt, endian, swz[z]);
+				OverlayPacker p;
+				overlay_packer_init(s, &p);
+				for (int k = 0; k < 300; k++)
+				{
+					const u8 r = rnd8(), g = rnd8(), b = rnd8();
+					wrong += p.pack(r, g, b) != overlay_pack(s, r, g, b);
+				}
+			}
+	CHECK(wrong == 0);
+}
+
+static void test_overlay_blit_argb()
+{
+	static const u32 kBackground = 0x12345678;
+	std::vector<u8> tpi = make_tpi(kGridPicW, kGridPicH);
+	const u8* argb = &tpi[kTpiHeader];
+	// width, height, scale, tiled; odd positions on purpose
+	const u32 cases[5][4] = {{640, 480, 1, 1}, {1280, 720, 2, 1}, {1920, 1080, 3, 1}, {640, 480, 1, 0}, {1280, 720, 2, 0}};
+	for (int t = 0; t < 5; t++)
+	{
+		OverlaySurface s = make_surface(cases[t][0], cases[t][1], cases[t][3] != 0, kOverlay8888, 2, kSwizzleZYXW);
+		std::vector<u8> mem(overlay_span(s), 0xEE);
+		OverlayPacker p;
+		overlay_packer_init(s, &p);
+		const u32 scale = cases[t][2], ox = 33 + 7 * t, oy = 21 + t;
+		CHECK(overlay_blit_argb(s, &mem[0], argb, kGridPicW, kGridPicH, scale, ox, oy, p, t == 4 ? &kBackground : NULL));
+		int wrong = 0, touched_outside = 0, drawn = 0;
+		for (u32 y = 0; y < s.height; y++)
+			for (u32 x = 0; x < s.width; x++)
+			{
+				const u32 v = rd_be32(&mem[overlay_offset(s, x, y)]);
+				const bool inside = x >= ox && y >= oy && x < ox + kGridPicW * scale && y < oy + kGridPicH * scale;
+				if (inside)
+				{
+					const u8* px = argb + (((y - oy) / scale) * kGridPicW + (x - ox) / scale) * 4;
+					const u32 want = px[0] >= 128 ? overlay_pack(s, px[1], px[2], px[3]) : t == 4 ? kBackground : 0xEEEEEEEEu;
+					wrong += v != want;
+					drawn += px[0] >= 128;
+				}
+				else if (v != 0xEEEEEEEEu)
+					touched_outside++;
+			}
+		CHECK(wrong == 0 && touched_outside == 0 && drawn > 0);
+	}
+	OverlaySurface s = make_surface(640, 480, true, kOverlay8888, 2, kSwizzleZYXW);
+	std::vector<u8> mem(overlay_span(s));
+	OverlayPacker p;
+	overlay_packer_init(s, &p);
+	CHECK(!overlay_blit_argb(s, &mem[0], argb, kGridPicW, kGridPicH, 1, 640 - kGridPicW + 1, 0, p, NULL));
+	CHECK(!overlay_blit_argb(s, &mem[0], argb, kGridPicW, kGridPicH, 1, 0, 480 - kGridPicH + 1, p, NULL));
+	CHECK(overlay_blit_argb(s, &mem[0], argb, kGridPicW, kGridPicH, 1, 640 - kGridPicW, 480 - kGridPicH, p, NULL));
+}
+
+static void test_grid_render_picture()
+{
+	// A square with a picture keeps its colour round the picture area and
+	// on the name strip, with the name on one line at the bottom.
+	static u8 img[kGridImageW * kGridImageH];
+	GridView v;
+	memset(&v, 0, sizeof(v));
+	for (int i = 0; i < 3; i++)
+		strcpy(v.cells[i].name, "Captain Jack Sparrow");
+	v.cells[0].picture = true;
+	v.cells[1].picture = true;
+	v.cells[1].placed = true;
+	v.cell_count = 3;
+	v.cursor = 1;
+	grid_render(img, v);
+#define PX(x, y) img[(y) * kGridImageW + (x)]
+	int x, y;
+	grid_cell_origin(0, &x, &y);
+	int strip_text = 0, upper_text = 0;
+	for (int j = 0; j < kGridCellH; j++)
+		for (int i = 0; i < kGridCellW; i++)
+		{
+			if (PX(x + i, y + j) != kGridText)
+				continue;
+			if (j >= kGridStripY) strip_text++; else upper_text++;
+		}
+	CHECK(strip_text > 40 && upper_text == 0);
+	int skip = 0;
+	for (int j = 0; j < kGridCellH; j++)
+		for (int i = 0; i < kGridCellW; i++)
+			skip += PX(x + i, y + j) == kGridSkip;
+	CHECK(skip == kGridPicW * kGridPicH && PX(x + kGridPicX, y + kGridPicY) == kGridSkip &&
+		PX(x + kGridPicX + kGridPicW - 1, y + kGridPicY + kGridPicH - 1) == kGridSkip);
+	CHECK(PX(x + 1, y + 1) == kGridCell && PX(x + kGridCellW - 1, y + kGridCellH - 1) == kGridCell);
+	grid_cell_origin(1, &x, &y);
+	CHECK(PX(x + 2, y + 10) == kGridCellOn && PX(x + kGridCellW - 3, y + kGridStripY + 1) == kGridCellOn); // inside the cursor frame
+	CHECK(PX(x + kGridCellW - 8, y + kGridStripY + 8) == kGridText); // the mark, on the strip
+	CHECK(PX(x - 1, y + 20) == kGridCursor);
+	// Without a picture the name may use three lines, as before.
+	grid_cell_origin(2, &x, &y);
+	int lower_text = 0;
+	for (int j = 0; j < 24; j++)
+		for (int i = 0; i < kGridCellW; i++)
+			lower_text += PX(x + i, y + kGridCellH - 1 - j) == kGridText;
+	int top_text = 0;
+	for (int j = 0; j < 24; j++)
+		for (int i = 0; i < kGridCellW; i++)
+			top_text += PX(x + i, y + j) == kGridText;
+	CHECK(top_text > 20 && lower_text > 20);
+#undef PX
+}
+
 static void test_grid()
 {
 	test_overlay_tiling();
@@ -366,4 +537,8 @@ static void test_grid()
 	test_grid_menu();
 	test_grid_input();
 	test_grid_render();
+	test_tpi_check();
+	test_overlay_packer();
+	test_overlay_blit_argb();
+	test_grid_render_picture();
 }

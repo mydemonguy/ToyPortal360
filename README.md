@@ -163,6 +163,16 @@ Hold **LB + RB + Y** for a 4x4 grid of every figure the game knows, drawn over t
 - **B** closes the grid. The game doesn't see your buttons while the grid is open.
 - Spots are picked for you. Dimensions uses the centre pad first, then left, then right. Infinity puts characters on Player 1, then Player 2, and other pieces where they belong.
 
+#### Adding your own pictures
+
+Toy Portal 360 doesn't ship any character pictures. You can add your own, for example photos of your own figures, and the grid shows each one in the top of its square with the name underneath.
+
+1. Put the pictures (PNG, JPG and so on) in a folder on your PC, each named after the figure as the grid shows it: `Batman.jpg`, `Spyro.png`. Characters other than letters, digits, space, `-` and `_` become `_`, as in figure file names. You can also use the figure's number: `2.png` for Dimensions or Infinity, `<id>.png` or `<id>-<variant>.png` for Skylanders.
+2. Convert them: `python3 tools/make_pictures.py <folder> Dimensions` (or `Skylanders` / `Infinity`; add `--fill` to crop instead of fit). This needs Pillow (`pip install pillow`). It writes small `.tpi` files (128x38 pixels, raw colour, so the console doesn't have to decode PNG or JPEG) to `<folder>/Pictures/<game>/`.
+3. Copy the `.tpi` files to `Hdd1:\ToyPortal\Pictures\<game>\` on the 360, then close and reopen the grid.
+
+Squares without a picture look as before. A file the grid can't use is skipped, with the reason in `log.txt` (`Grid: picture ... skipped: ...`).
+
 The grid hooks the kernel's `VdSwap`, which every game calls to show a frame, and draws into that frame from a separate thread. If a game's picture is in a format it can't draw on, a message says so and the normal menu still works. This part hasn't been tried on a console yet: see `log.txt` (lines starting `Grid:`) if it misbehaves.
 
 ## Settings (`toyportal.ini`)

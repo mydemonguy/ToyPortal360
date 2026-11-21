@@ -29,12 +29,35 @@ enum
 	kGridRows = 4,
 	kGridPerPage = kGridCols * kGridRows,
 	kGridImageW = 576, // the image at 1x; drawn 2x at 720p, 3x at 1080p
-	kGridImageH = 304,
+	kGridImageH = 320, // 2x and 3x must fit in 90% of 720 and 1080 lines
 	kGridCellW = 136,
-	kGridCellH = 56,
+	kGridCellH = 60,
 	kGridLineChars = 15,
-	kGridLines = 3
+	kGridLines = 3,
+	// A square with a picture: the picture in the top part, the name on a
+	// one-line strip under it.
+	kGridPicX = 4,     // where the picture area starts in the square
+	kGridPicY = 4,
+	kGridPicW = 128,   // the largest picture, at 1x
+	kGridPicH = 38,
+	kGridStripY = 42   // the name strip, to the bottom of the square
 };
+
+// The user's own pictures (.tpi, made by tools/make_pictures.py): "TPI1",
+// width and height as big-endian 16-bit numbers, then width * height
+// big-endian ARGB pixels, row by row. Pixels with alpha under 128 are not
+// drawn, so the square shows through. Toy Portal 360 ships no pictures.
+enum
+{
+	kTpiHeader = 8,
+	kTpiMaxBytes = kTpiHeader + kGridPicW * kGridPicH * 4
+};
+// Checks a .tpi file of `size` bytes. Returns NULL if it can be drawn
+// (setting *w and *h), or why not.
+const char* tpi_check(const u8* file, u32 size, u32* w, u32* h);
+// Where a w x h picture goes in square i (centred in the picture area,
+// which grid_render leaves as kGridSkip for the picture to be drawn in).
+void grid_picture_origin(int i, u32 w, u32 h, int* x, int* y);
 
 enum GridColor
 {
@@ -46,7 +69,8 @@ enum GridColor
 	kGridDim,
 	kGridBorder,
 	kGridTitle,
-	kGridColors
+	kGridColors,
+	kGridSkip = 0xFF // left for the picture (overlay.h kOverlaySkip)
 };
 extern const u8 kGridPalette[kGridColors][3]; // RGB
 
@@ -98,6 +122,7 @@ struct GridCell
 {
 	char name[64];
 	bool placed;
+	bool picture; // the user has a picture for it: name on one line at the bottom
 };
 
 struct GridView

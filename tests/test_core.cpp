@@ -582,6 +582,23 @@ int main(int argc, char** argv)
 		print_vectors();
 		return 0;
 	}
+	if (argc > 2 && strcmp(argv[1], "--tpi") == 0)
+	{
+		// What the console would say about a .tpi file (for make_pictures.py's test).
+		static u8 buf[kTpiMaxBytes + 1];
+		FILE* f = fopen(argv[2], "rb");
+		if (!f)
+			return 2;
+		const size_t got = fread(buf, 1, sizeof(buf), f);
+		fclose(f);
+		u32 w, h;
+		const char* why = got > (size_t)kTpiMaxBytes ? "too big" : tpi_check(buf, (u32)got, &w, &h);
+		if (why)
+			printf("%s\n", why);
+		else
+			printf("ok %ux%u\n", w, h);
+		return why ? 1 : 0;
+	}
 	test_bytes_and_crc();
 	test_tea_roundtrip();
 	test_dim_create_all_characters();

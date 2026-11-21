@@ -157,6 +157,8 @@ bool overlay_blit(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32
 	u32 ox, u32 oy, const u32* packed)
 {
 	static u32 line[4096]; // one row of the image, scaled and in final colours
+	static u8 skip[4096 / 4]; // per group of 4: 0 draw all, 1 skip all, 2 mixed
+	static u8 skip_px[4096];
 	const u32 w = iw * scale, h = ih * scale;
 	if (!mem || !scale || (ox & 3) || (w & 3) || w > 4096 || ox + w > s.width || oy + h > s.height)
 		return false;
@@ -164,9 +166,18 @@ bool overlay_blit(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32
 	{
 		const u8* src = image + sy * iw;
 		u32* out = line;
+		u8* sp = skip_px;
 		for (u32 sx = 0; sx < iw; sx++)
 			for (u32 k = 0; k < scale; k++)
-				*out++ = packed[src[sx]];
+			{
+				*sp++ = src[sx] == kOverlaySkip;
+				*out++ = packed[src[sx] == kOverlaySkip ? 0 : src[sx]];
+			}
+		for (u32 g = 0; g < w / 4; g++)
+		{
+			const u32 n = skip_px[4 * g] + skip_px[4 * g + 1] + skip_px[4 * g + 2] + skip_px[4 * g + 3];
+			skip[g] = n == 0 ? 0 : n == 4 ? 1 : 2;
+		}
 		for (u32 k = 0; k < scale; k++)
 		{
 			const u32 y = oy + sy * scale + k;
@@ -188,10 +199,68 @@ bool overlay_blit(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32
 				else
 					off = row_high + x * 4;
 				u8* p = mem + off;
-				store_word(p, line[dx]);
-				store_word(p + 4, line[dx + 1]);
-				store_word(p + 8, line[dx + 2]);
-				store_word(p + 12, line[dx + 3]);
+				const u8 sk = skip[dx / 4];
+				if (sk == 0)
+				{
+					store_word(p, line[dx]);
+					store_word(p + 4, line[dx + 1]);
+					store_word(p + 8, line[dx + 2]);
+					store_word(p + 12, line[dx + 3]);
+				}
+				else if (sk == 2)
+					for (u32 j = 0; j < 4; j++)
+						if (!skip_px[dx + j])
+							store_word(p + 4 * j, line[dx + j]);
+			}
+		}
+	}
+	return true;
+}
+
+void overlay_packer_init(const OverlaySurface& s, OverlayPacker* p)
+{
+	for (u32 i = 0; i < 256; i++)
+	{
+		p->r_[i] = overlay_pack(s, (u8)i, 0, 0);
+		p->g_[i] = overlay_pack(s, 0, (u8)i, 0);
+		p->b_[i] = overlay_pack(s, 0, 0, (u8)i);
+	}
+}
+
+bool overlay_blit_argb(const OverlaySurface& s, u8* mem, const u8* argb, u32 w, u32 h, u32 scale,
+	u32 ox, u32 oy, const OverlayPacker& p, const u32* background)
+{
+	if (!mem || !argb || !scale || !w || !h || ox + w * scale > s.width || oy + h * scale > s.height)
+		return false;
+	for (u32 sy = 0; sy < h; sy++)
+	{
+		const u8* src = argb + sy * w * 4;
+		for (u32 k = 0; k < scale; k++)
+		{
+			const u32 y = oy + sy * scale + k;
+			u32 row_high = y * s.pitch * 4, row_low = 0;
+			if (s.tiled)
+				tiled_row(y, s.pitch, &row_high, &row_low);
+			for (u32 sx = 0; sx < w; sx++)
+			{
+				const u8* px = src + sx * 4;
+				if (px[0] < 128 && !background)
+					continue;
+				const u32 v = px[0] < 128 ? *background : p.pack(px[1], px[2], px[3]);
+				for (u32 j = 0; j < scale; j++)
+				{
+					const u32 x = ox + sx * scale + j;
+					u32 off;
+					if (s.tiled)
+					{
+						u32 col_low;
+						const u32 col_high = tiled_col(x, &col_low);
+						off = row_high + col_high + (col_low ^ row_low);
+					}
+					else
+						off = row_high + x * 4;
+					store_word(mem + off, v);
+				}
 			}
 		}
 	}

@@ -958,9 +958,35 @@ static int count_files(const char* xbox_dir)
 
 /* The grid's colours as the A8R8G8B8 front buffer holds them. */
 enum { C_TITLE = 0xFF1E468C, C_CELL = 0xFF343A48, C_CELL_ON = 0xFF24843A, C_CURSOR = 0xFFFFCC00, C_GAME = 0x40404040 };
-/* At 640x480 the grid is drawn 1x at (32, 88). */
+/* At 640x480 the grid is drawn 1x at (32, 80). */
 #define GX(x) (32 + (x))
-#define GY(y) (88 + (y))
+#define GY(y) (80 + (y))
+
+/* A .tpi picture: "TPI1", width, height, big-endian ARGB pixels. pattern 0:
+ * a plain gradient (R from x, G from y, B 0x80); otherwise one colour. */
+static void write_tpi(const char* xbox_path, int w, int h, u32 colour, const char* magic, int extra)
+{
+	char p[600];
+	host_path(xbox_path, p, sizeof(p));
+	for (char* c = p + strlen(g_root) + 1; *c; c++)
+		if (*c == '/') { *c = 0; mkdir(p, 0755); *c = '/'; }
+	FILE* f = fopen(p, "wb");
+	if (!f)
+		return;
+	u8 head[8] = {0, 0, 0, 0, (u8)(w >> 8), (u8)w, (u8)(h >> 8), (u8)h};
+	memcpy(head, magic, 4);
+	fwrite(head, 1, 8, f);
+	for (int y = 0; y < h; y++)
+		for (int x = 0; x < w; x++)
+		{
+			const u32 v = colour ? colour : 0xFF000080u | (u32)((x * 2) & 0xFF) << 16 | (u32)((y * 6) & 0xFF) << 8;
+			const u8 px[4] = {(u8)(v >> 24), (u8)(v >> 16), (u8)(v >> 8), (u8)v};
+			fwrite(px, 1, 4, f);
+		}
+	for (int i = 0; i < extra; i++)
+		fputc(0, f);
+	fclose(f);
+}
 
 static int run_grid(u32 (*entry)(void*, u32, void*))
 {
@@ -992,6 +1018,13 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 		usleep(20000);
 	CHECK(note_contains("LB+RB+Y for the grid"));
 
+	/* The player's own pictures (none ship with Toy Portal 360): Batman by
+	 * name, Gandalf by his number (2), and two broken ones. */
+	write_tpi("TPHDD:\\ToyPortal\\Pictures\\Dimensions\\Batman.tpi", 128, 38, 0, "TPI1", 0);
+	write_tpi("TPHDD:\\ToyPortal\\Pictures\\Dimensions\\2.tpi", 64, 20, 0xFF10C0F0u, "TPI1", 0);
+	write_tpi("TPHDD:\\ToyPortal\\Pictures\\Dimensions\\Wyldstyle.tpi", 16, 16, 0xFFFF0000u, "\x89PNG", 0);
+	write_tpi("TPHDD:\\ToyPortal\\Pictures\\Dimensions\\Aquaman.tpi", 128, 38, 0xFFFF0000u, "TPI1", 4);
+
 	pthread_t rt;
 	g_render = 1;
 	pthread_create(&rt, NULL, render_thread, NULL);
@@ -1014,6 +1047,10 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	CHECK(game_buttons() == 0); /* held back while the grid is open */
 	g_buttons = 0;
 	CHECK(wait_log("Grid: 0 Dimensions figure file(s) found", 5000));
+	CHECK(log_contains("Grid: picture Batman.tpi shown (128x38)"));
+	CHECK(log_contains("Grid: picture 2.tpi shown (64x20)"));
+	CHECK(log_contains("Grid: picture Wyldstyle.tpi skipped: not a .tpi file"));
+	CHECK(log_contains("Grid: picture Aquaman.tpi skipped: too big"));
 
 	/* Stop the game's frames: the grid keeps drawing on both buffers. */
 	g_render = 0;
@@ -1021,9 +1058,19 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	for (int i = 0; i < 2; i++)
 	{
 		CHECK(fb_pixel(i, GX(4), GY(4)) == C_TITLE);
-		CHECK(fb_pixel(i, GX(7 + 130), GY(30 + 50)) == C_CELL);
+		CHECK(fb_pixel(i, GX(7 + 2), GY(30 + 50)) == C_CELL);
 		CHECK(fb_pixel(i, GX(7 - 1), GY(30 + 20)) == C_CURSOR);   /* cursor on the first cell */
 		CHECK(fb_pixel(i, GX(7 + 142 + 130), GY(30 + 50)) == C_CELL);
+		/* Batman's picture fills the top of his square, pixel for pixel. */
+		CHECK(fb_pixel(i, GX(7 + 4), GY(30 + 4)) == 0xFF000080u);
+		CHECK(fb_pixel(i, GX(7 + 4 + 10), GY(30 + 4 + 5)) == 0xFF141E80u);
+		CHECK(fb_pixel(i, GX(7 + 4 + 127), GY(30 + 4 + 37)) == (0xFF000080u | 0xFEu << 16 | 0xDEu << 8));
+		/* Gandalf's smaller one is centred: (128-64)/2 = 32, (38-20)/2 = 9. */
+		CHECK(fb_pixel(i, GX(149 + 4 + 32), GY(30 + 4 + 9)) == 0xFF10C0F0u);
+		CHECK(fb_pixel(i, GX(149 + 4 + 31), GY(30 + 4 + 9)) == C_CELL);
+		CHECK(fb_pixel(i, GX(149 + 4 + 32 + 63), GY(30 + 4 + 9 + 19)) == 0xFF10C0F0u);
+		/* The broken ones show no picture. */
+		CHECK(fb_pixel(i, GX(291 + 70), GY(30 + 20)) != 0xFFFF0000u && fb_pixel(i, GX(433 + 70), GY(30 + 20)) != 0xFFFF0000u);
 		CHECK(fb_pixel(i, 5, 5) == C_GAME && fb_pixel(i, 635, 475) == C_GAME); /* rest untouched */
 	}
 	g_render = 1;
@@ -1040,7 +1087,8 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	CHECK(wait_log("Grid: Made and placed Batman", 3000));
 	g_render = 0;
 	usleep(300000);
-	CHECK(fb_pixel(0, GX(7 + 130), GY(30 + 50)) == C_CELL_ON && fb_pixel(1, GX(7 + 130), GY(30 + 50)) == C_CELL_ON);
+	CHECK(fb_pixel(0, GX(7 + 2), GY(30 + 20)) == C_CELL_ON && fb_pixel(1, GX(7 + 2), GY(30 + 20)) == C_CELL_ON);
+	CHECK(fb_pixel(0, GX(7 + 4 + 10), GY(30 + 4 + 5)) == 0xFF141E80u); /* the picture stays */
 	save_frame(getenv("GRID_PPM"));
 	g_render = 1;
 
@@ -1050,7 +1098,7 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	CHECK(wait_log("Grid: Removed Batman", 3000));
 	g_render = 0;
 	usleep(300000);
-	CHECK(fb_pixel(0, GX(7 + 130), GY(30 + 50)) == C_CELL);
+	CHECK(fb_pixel(0, GX(7 + 2), GY(30 + 20)) == C_CELL);
 	g_render = 1;
 
 	/* RB turns the page; A there makes a different figure; A once more on

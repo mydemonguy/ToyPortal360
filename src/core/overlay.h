@@ -56,8 +56,27 @@ u32 overlay_pack(const OverlaySurface& s, u8 r, u8 g, u8 b);
 // at (ox, oy), each image pixel drawn as a `scale` x `scale` block. `mem` is
 // where the surface's bytes are (the surface address on a console).
 // `packed` holds overlay_pack() of each palette entry. ox and iw * scale
-// must be multiples of 4. Returns false if it would not fit.
+// must be multiples of 4. Pixels of value kOverlaySkip are left as they are
+// (another blit draws there). Returns false if it would not fit.
+enum { kOverlaySkip = 0xFF };
 bool overlay_blit(const OverlaySurface& s, u8* mem, const u8* image, u32 iw, u32 ih, u32 scale,
 	u32 ox, u32 oy, const u32* packed);
+
+// overlay_pack() for any colour, from three tables: the R, G and B fields
+// never share bits, so pack(r, g, b) == r_[r] | g_[g] | b_[b].
+struct OverlayPacker
+{
+	u32 r_[256], g_[256], b_[256];
+	u32 pack(u8 r, u8 g, u8 b) const { return r_[r] | g_[g] | b_[b]; }
+};
+void overlay_packer_init(const OverlaySurface& s, OverlayPacker* p);
+
+// Copies a full-colour picture (`w` x `h` big-endian ARGB words, as in a
+// .tpi file) to the surface at (ox, oy), each pixel as a `scale` x `scale`
+// block. Pixels with alpha under 128 get `*background`, or are left as
+// they are if it is NULL. Any position works. Returns false if it would
+// not fit.
+bool overlay_blit_argb(const OverlaySurface& s, u8* mem, const u8* argb, u32 w, u32 h, u32 scale,
+	u32 ox, u32 oy, const OverlayPacker& p, const u32* background);
 
 #endif

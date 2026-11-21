@@ -12,6 +12,9 @@ echo "== x86_64 (little-endian)"
 g++ $FLAGS $SRC -o build/test_x86
 ./build/test_x86
 ./build/test_x86 --vectors | python3 tests/rpcs3_reference.py
+echo "== tools/make_pictures.py (the player's own grid pictures)"
+python3 tests/test_make_pictures.py >build/make_pictures.log || { cat build/make_pictures.log; exit 1; }
+tail -n 1 build/make_pictures.log
 
 if command -v powerpc-linux-gnu-g++-11 >/dev/null && command -v qemu-ppc >/dev/null; then
 	echo "== powerpc 32-bit (big-endian, like the Xbox 360)"
