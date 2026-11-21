@@ -2,7 +2,7 @@
 
 A plugin for modded Xbox 360 consoles that fakes a **Skylanders Portal of Power**, a **LEGO Dimensions Toy Pad** or a **Disney Infinity Base**. You use figure files instead of the real hardware and toys, and pick them from an on-screen menu while you play. It works like the portal, toy pad and Infinity Base managers built into RPCS3.
 
-> **Status: working on a real Xbox 360 with Peer Pressure and LEGO Dimensions.** Figures are created, placed on the virtual Toy Pad and played with. Skylanders, Disney Infinity and the DashLaunch build use the same code but haven't been tried on a console yet; reports are welcome in Issues.
+> **Status: working on a real Xbox 360 with Peer Pressure in LEGO Dimensions and Disney Infinity 3.0.** Figures are created, placed and played with. Skylanders Imaginators starts, finds the portal and creates figures; whether it accepts newly created Skylanders is still being confirmed. Other Skylanders and Infinity games and the DashLaunch build use the same code but haven't been tried on a console yet; reports are welcome in Issues.
 
 ## Screenshots
 
@@ -112,7 +112,7 @@ Peer Pressure doesn't load DashLaunch plugins. Instead it can sideload a DLL int
 - It only touches the game's own imports, never the kernel or XAM.
 - Its threads belong to the game, and it saves figures and stops cleanly when Peer Pressure unloads it at game exit.
 
-Tested on a console with LEGO Dimensions (Games on Demand, `5752084B`): figures are created, placed and played with. Skylanders and Disney Infinity use the same code but haven't been tried on a console. The full player guide is `tools/peerpressure/HOW-TO-INSTALL.txt`; in short:
+Tested on a console with LEGO Dimensions (Games on Demand, `5752084B`) and Disney Infinity 3.0 (`42560832`): figures are created, placed and played with. Skylanders Imaginators (`41560930`) starts and finds the portal; it looks the portal up about 12 seconds after starting, so wait until you're past the title screen before opening the menu. Other Skylanders and Infinity games use the same code but haven't been tried on a console. The full player guide is `tools/peerpressure/HOW-TO-INSTALL.txt`; in short:
 
 1. Copy `ToyPortal360-PeerPressure.xex` and the game's `sideload.ini` from `tools/peerpressure/NextToGame/<game>/` into the folder that holds the game's files: for a Games on Demand copy, its `00007000` folder; for an extracted game, the folder with `default.xex`. This is the first place Peer Pressure looks, and the route that was confirmed on a console.
 2. **Restart the console fully, then start the game first.** Peer Pressure sideloads only into the first game started after power-on; every later launch loaded nothing, even with configs that had just worked.
@@ -173,7 +173,7 @@ The plugin rereads this file every time a game starts.
 
 **Skylanders (good evidence).** Upstream Xenia uses these functions with a real 360 portal (USB ID 1430:1F17), and the 32-byte packets match RPCS3's protocol. One detail is unconfirmed and logged: whether Skylanders games wrap frames, and what length byte they expect back. The plugin detects the wrapping. The length is set by `sky_wrap_len`.
 
-**Disney Infinity (good evidence for the route, framing assumed).** Upstream Xenia lists the 360 Infinity base (USB ID 24C6:FA00) as one of the devices behind these same four functions. The Xenia Seamless Toypad fork labels that device "Disney Infinity Base". The protocol is RPCS3's, which works with the real base. Nothing I found shows whether 360 Infinity games wrap their frames. The plugin accepts both bare `FF …` and wrapped `0B <len> FF …` frames, and answers in the form the game used.
+**Disney Infinity (good evidence for the route, framing assumed).** Upstream Xenia lists the 360 Infinity base (USB ID 24C6:FA00) as one of the devices behind these same four functions. The Xenia Seamless Toypad fork labels that device "Disney Infinity Base". The protocol is RPCS3's, which works with the real base. On a console, Disney Infinity 3.0 wraps its frames as `0B <len> FF …` and sends activate (`0x80`) repeatedly with a rising sequence number until the reply carries the same number; RPCS3 and Dolphin always answer with sequence 0. The plugin accepts both bare and wrapped frames, answers in the form the game used, and echoes the sequence.
 
 **Shared detail.** The parameter order of the non-`Ex` functions comes from Xenia, which marks them as not fully verified. Dimensions uses the `Ex` versions.
 
@@ -229,7 +229,7 @@ Run `tests/run_tests.sh`. It needs `g++` and Python 3 with the `cryptography` pa
 - That the console's loader accepts these XEX files.
 - The 64-bit register saves, which are checked by reading the code, not by running it.
 - Peer Pressure's sideload ini format.
-- How each real game frames its portal packets. Dimensions' framing is known from the Xenia fork. Skylanders' and Infinity's are guesses, handled both ways.
+- How each real game frames its portal packets. Dimensions' framing is known from the Xenia fork; Imaginators' and Infinity 3.0's (`0B <len>` wrapped) were seen on a console. Other Skylanders and Infinity games are assumed to match, and both forms are handled.
 
 A first run on a console with `log = 1` is still the real test.
 
