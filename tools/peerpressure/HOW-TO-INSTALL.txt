@@ -64,7 +64,11 @@ Hold LB + RB + Y for a grid of every figure in the game.
   A               put the figure on (makes its file if you have none)
   A again         take it off
   LEGO Dimensions: A asks Left / Centre / Right. Pick with left/right,
-                  then A. B goes back without placing.
+                  then A. B goes back without placing. On a figure
+                  that's on already, picking another pad moves it
+                  and the fourth box, Off, takes it off.
+  The toy pad's lights show in the footer (Pad L C R) and on the picker's
+  boxes, with the colour's name, for puzzles like Master Build.
   B               close
 Figures on the pad are green. If every spot a piece can use is taken, A
 takes off the one that has been on longest and puts the new one there.

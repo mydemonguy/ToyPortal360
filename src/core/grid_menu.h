@@ -69,6 +69,9 @@ enum GridColor
 	kGridDim,
 	kGridBorder,
 	kGridTitle,
+	kGridLight1, // the toy pad's lights (left, centre, right); the console
+	kGridLight2, // sets these from the game's light commands
+	kGridLight3,
 	kGridColors,
 	kGridSkip = 0xFF // left for the picture (overlay.h kOverlaySkip)
 };
@@ -135,10 +138,18 @@ struct GridView
 	int cursor;      // index within the page, or -1
 	// Picking a toy pad spot (LEGO Dimensions): drawn instead of the footer.
 	bool choosing;
-	char choose_text[24];      // e.g. "Batman on:"
-	char choose_names[3][16];  // left, centre, right, e.g. "Left 1/3"
-	int choose;                // the highlighted one, 0-2
+	int choose_count;          // 3 (left, centre, right) or 4 (+ "Off")
+	char choose_text[24];      // e.g. "Batman:"
+	char choose_names[4][16];  // e.g. "Left 1/3", "Left Purple", "Off"
+	bool choose_lit[3];        // that pad is lit (kGridLight1 + i)
+	int choose;                // the highlighted one
+	// The pad lights as three small squares in the footer (LEGO Dimensions).
+	bool show_lights;
+	bool lit[3];               // left, centre, right
 };
+
+// A rough name for a light colour ("Purple"), or 0 when it's off.
+const char* grid_colour_name(u8 r, u8 g, u8 b);
 
 // Word-wraps `text` into at most `max_lines` lines of `cols` characters
 // (cols <= 31). A line that does not fit ends in "..". Returns the lines used.

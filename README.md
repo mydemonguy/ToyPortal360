@@ -159,7 +159,8 @@ Hold **LB + RB + Y** for a 4x4 grid of every figure the game knows, drawn over t
 
 - Move with the **d-pad** or **left stick**. **LB / RB** turn the page.
 - **A** puts the figure under the cursor on the portal. If you have no file for it yet, one is made first, in the same folder and with the same name the Create menu uses. **A** again takes it off.
-- **LEGO Dimensions:** **A** first shows a pad picker (**Left / Centre / Right**, with how many spots each has taken). Pick with left/right and press **A**; **B** goes back. It starts on the centre pad, or the first pad with room.
+- **LEGO Dimensions:** **A** shows a pad picker (**Left / Centre / Right**, with how many spots each has taken). Pick with left/right and press **A**; **B** goes back. For a figure that isn't on yet it starts on the centre pad, or the first pad with room. For a figure that's on already it starts on its pad and has a fourth box, **Off**: pick another pad to move it there, or **Off** to take it off.
+- **Toy pad lights:** the real pad's lights matter in puzzles like Master Build ("place Wyldstyle on the purple glowing panels"). The footer shows the three pads' current colours (**Pad L C R**), and in the picker a lit pad has a border in its colour and its colour's name ("Left Purple").
 - Figures that are on the portal are green, with a white mark in the corner.
 - **B** closes the grid. The game doesn't see your buttons while the grid is open.
 - Spots are picked for you, except for the Dimensions pad you choose. Infinity puts characters on Player 1, then Player 2, and other pieces where they belong. If every spot a piece can use is taken, **A** takes off the one that has been on longest, and the new one goes on in its place a moment later (so the game sees the old one leave first).

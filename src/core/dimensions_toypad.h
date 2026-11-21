@@ -53,6 +53,12 @@ public:
 	int count() const;
 	int first_free_on_pad(u8 pad) const;
 
+	// The colour the game last asked each pad to show (pad 1-3: centre,
+	// left, right), and a count that goes up whenever one changes. For a
+	// fade or flash it's the colour being faded or flashed to.
+	void light(u8 pad, u8* rgb) const;
+	u32 light_changes() const { return light_changes_; }
+
 	// Tag helpers (also used by the creator and the self-tests).
 	static void create_blank(u8* buf_180, u16 id, const u8* uid7_or_null);
 	static u32 figure_id_of(const u8* buf_180);
@@ -74,6 +80,9 @@ private:
 	u32 next_rng();
 	DimFigure* by_game_index(u8 index);
 
+	void set_light(u8 pad, const u8* rgb);
+	u8 lights_[3][3];
+	u32 light_changes_;
 	DimFigure figures_[kDimSlots];
 	PacketQueue<16> changes_;
 	PacketQueue<16> replies_;

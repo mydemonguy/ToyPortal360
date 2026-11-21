@@ -1103,7 +1103,36 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	save_frame(getenv("GRID_PPM"));
 	g_render = 1;
 
-	/* A again takes him off. */
+	/* The game lights the left pad purple (C0, pad 2). A on Batman, who is
+	 * on the pad, shows four boxes (Left, Centre, Right, Off) starting on
+	 * his pad; the lit one has a purple border. */
+	memset(pkt, 0, 32);
+	pkt[0] = 0x0B; pkt[1] = 0x11; pkt[2] = 0x55; pkt[3] = 0x06; pkt[4] = 0xC0; pkt[5] = 0x02;
+	pkt[6] = 2; pkt[7] = 0x80; pkt[8] = 0x00; pkt[9] = 0xFF;
+	CHECK(((u32 (*)(u32, u8*, u32))(g_draw.stubs + 4))(5, pkt, 32) == 0);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x55 && rp[4] == 0x02);
+	press(0x1000, 120);
+	g_render = 0;
+	usleep(300000);
+	CHECK(fb_pixel(0, GX(124 + 1), GY(295 + 1)) == 0xFF8000FFu);  /* Left: purple border */
+	CHECK(fb_pixel(0, GX(124 + 5), GY(295 + 5)) == C_CELL);
+	CHECK(fb_pixel(0, GX(236 + 1), GY(295 + 1)) == C_CELL_ON);    /* Centre: his pad, highlighted */
+	CHECK(fb_pixel(0, GX(460 + 1), GY(295 + 1)) == C_CELL);       /* Off */
+	save_frame(getenv("GRID_MOVE_PPM"));
+	g_render = 1;
+	/* Left, A: he moves to the left pad; the game sees him leave the centre
+	 * and arrive on the left. */
+	press(0x0004, 120);
+	press(0x1000, 120);
+	CHECK(wait_log("Grid: Moved Batman to the left pad", 3000));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 1);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 0);
+
+	/* A, right three times to Off, A: takes him off. */
+	press(0x1000, 120);
+	press(0x0008, 120);
+	press(0x0008, 120);
+	press(0x0008, 120);
 	press(0x1000, 120);
 	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[7] == 1);
 	CHECK(wait_log("Grid: Removed Batman", 3000));

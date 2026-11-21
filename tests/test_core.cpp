@@ -134,6 +134,84 @@ static void test_dim_create_all_characters()
 }
 
 // Plays the game's side of the toy pad handshake.
+static void test_dim_lights()
+{
+	DimensionsToypad d;
+	u8 cmd[32], rgb[3];
+	const u32 start = d.light_changes();
+	// C0: one pad.
+	memset(cmd, 0, 32);
+	cmd[0] = 0x55; cmd[1] = 0x06; cmd[2] = 0xC0; cmd[3] = 0x05;
+	cmd[4] = 2; cmd[5] = 0x80; cmd[6] = 0x00; cmd[7] = 0xFF;
+	d.handle_command(cmd, 32);
+	d.light(kPadLeft, rgb);
+	CHECK(rgb[0] == 0x80 && rgb[1] == 0 && rgb[2] == 0xFF);
+	d.light(kPadCenter, rgb);
+	CHECK(rgb[0] == 0 && rgb[1] == 0 && rgb[2] == 0);
+	CHECK(d.light_changes() == start + 1);
+	// The same colour again isn't a change.
+	d.handle_command(cmd, 32);
+	CHECK(d.light_changes() == start + 1);
+	// Every command still gets an answer.
+	u8 out[32];
+	CHECK(d.next_packet(out) && out[0] == 0x55 && out[2] == 0x05);
+	// C0 pad 0: all three.
+	cmd[4] = 0; cmd[5] = 1; cmd[6] = 2; cmd[7] = 3;
+	d.handle_command(cmd, 32);
+	for (u8 p = 1; p <= 3; p++)
+	{
+		d.light(p, rgb);
+		CHECK(rgb[0] == 1 && rgb[1] == 2 && rgb[2] == 3);
+	}
+	// C2 fade: pad speed count r g b.
+	memset(cmd + 4, 0, 28);
+	cmd[2] = 0xC2; cmd[4] = 1; cmd[5] = 9; cmd[6] = 9; cmd[7] = 10; cmd[8] = 20; cmd[9] = 30;
+	d.handle_command(cmd, 32);
+	d.light(kPadCenter, rgb);
+	CHECK(rgb[0] == 10 && rgb[1] == 20 && rgb[2] == 30);
+	// C3 flash: pad on off count r g b.
+	memset(cmd + 4, 0, 28);
+	cmd[2] = 0xC3; cmd[4] = 3; cmd[5] = 5; cmd[6] = 5; cmd[7] = 0xFF; cmd[8] = 40; cmd[9] = 50; cmd[10] = 60;
+	d.handle_command(cmd, 32);
+	d.light(kPadRight, rgb);
+	CHECK(rgb[0] == 40 && rgb[1] == 50 && rgb[2] == 60);
+	// C8 colour all: (on r g b) for centre, left, right; off leaves a pad.
+	memset(cmd + 4, 0, 28);
+	cmd[2] = 0xC8;
+	const u8 all[12] = {1, 0xAA, 0, 0xAA, 0, 9, 9, 9, 1, 0, 0xBB, 0};
+	memcpy(cmd + 4, all, 12);
+	d.handle_command(cmd, 32);
+	d.light(kPadCenter, rgb);
+	CHECK(rgb[0] == 0xAA && rgb[1] == 0 && rgb[2] == 0xAA);
+	d.light(kPadLeft, rgb);
+	CHECK(rgb[0] == 1 && rgb[1] == 2 && rgb[2] == 3);
+	d.light(kPadRight, rgb);
+	CHECK(rgb[0] == 0 && rgb[1] == 0xBB && rgb[2] == 0);
+	// C6 fade all: (on speed count r g b) x 3.
+	memset(cmd + 4, 0, 28);
+	cmd[2] = 0xC6;
+	const u8 fade[18] = {0, 1, 1, 7, 7, 7, 1, 1, 1, 0x11, 0x22, 0x33, 0, 1, 1, 7, 7, 7};
+	memcpy(cmd + 4, fade, 18);
+	d.handle_command(cmd, 32);
+	d.light(kPadLeft, rgb);
+	CHECK(rgb[0] == 0x11 && rgb[1] == 0x22 && rgb[2] == 0x33);
+	d.light(kPadCenter, rgb);
+	CHECK(rgb[0] == 0xAA);
+	// C7 flash all: (on on_t off_t count r g b) x 3.
+	memset(cmd + 4, 0, 28);
+	cmd[2] = 0xC7;
+	const u8 flash[21] = {1, 2, 2, 9, 0x80, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 9, 0x40, 0x41, 0x42};
+	memcpy(cmd + 4, flash, 21);
+	d.handle_command(cmd, 32);
+	d.light(kPadCenter, rgb);
+	CHECK(rgb[0] == 0x80 && rgb[1] == 0 && rgb[2] == 0x80);
+	d.light(kPadRight, rgb);
+	CHECK(rgb[0] == 0x40 && rgb[1] == 0x41 && rgb[2] == 0x42);
+	d.reset();
+	d.light(kPadCenter, rgb);
+	CHECK(rgb[0] == 0 && d.light_changes() == 0);
+}
+
 static void test_dim_session()
 {
 	ToyRouter r;
@@ -604,6 +682,7 @@ int main(int argc, char** argv)
 	test_bytes_and_crc();
 	test_tea_roundtrip();
 	test_dim_create_all_characters();
+	test_dim_lights();
 	test_dim_session();
 	test_sky_create_figure();
 	test_sky_session();

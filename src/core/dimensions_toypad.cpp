@@ -171,6 +171,8 @@ void DimensionsToypad::reset()
 	changes_.clear();
 	replies_.clear();
 	ra_ = rb_ = rc_ = rd_ = 0;
+	memset(lights_, 0, sizeof(lights_));
+	light_changes_ = 0;
 }
 
 int DimensionsToypad::count() const
@@ -340,8 +342,30 @@ void DimensionsToypad::handle_command(const u8* buf, u32 len)
 		break;
 	case 0xC0: case 0xC1: case 0xC2: case 0xC3: // pad lights
 	case 0xC4: case 0xC6: case 0xC7: case 0xC8:
+	{
+		// Payloads as the community Toy Pad notes give them (pad 0 = all,
+		// 1 centre, 2 left, 3 right; the "all" forms list centre, left, right):
+		//   C0 pad r g b              C2 pad speed count r g b
+		//   C3 pad on off count r g b C6 3 x (on speed count r g b)
+		//   C7 3 x (on on_t off_t count r g b)   C8 3 x (on r g b)
+		const u8* p = buf + 4;
+		const u32 have = len > 4 ? len - 4 : 0;
+		if (command == 0xC0 && have >= 4)
+			set_light(p[0], p + 1);
+		else if (command == 0xC2 && have >= 6)
+			set_light(p[0], p + 3);
+		else if (command == 0xC3 && have >= 7)
+			set_light(p[0], p + 4);
+		else if ((command == 0xC6 && have >= 18) || (command == 0xC7 && have >= 21) || (command == 0xC8 && have >= 12))
+		{
+			const u32 step = command == 0xC6 ? 6 : command == 0xC7 ? 7 : 4;
+			for (u8 i = 0; i < 3; i++)
+				if (p[i * step])
+					set_light((u8)(i + 1), p + i * step + step - 3);
+		}
 		blank_response(0x01, sequence, q);
 		break;
+	}
 	case 0xD2: // Read 4 pages
 		query_block(buf[4], buf[5], q, sequence);
 		break;
@@ -413,6 +437,25 @@ bool DimensionsToypad::remove(int slot)
 	f.pad = kDimNoIndex;
 	f.id = 0;
 	return true;
+}
+
+void DimensionsToypad::set_light(u8 pad, const u8* rgb)
+{
+	for (u8 i = 1; i <= 3; i++)
+		if (pad == 0 || pad == i)
+		{
+			if (memcmp(lights_[i - 1], rgb, 3) != 0)
+				light_changes_++;
+			memcpy(lights_[i - 1], rgb, 3);
+		}
+}
+
+void DimensionsToypad::light(u8 pad, u8* rgb) const
+{
+	if (pad >= 1 && pad <= 3)
+		memcpy(rgb, lights_[pad - 1], 3);
+	else
+		memset(rgb, 0, 3);
 }
 
 bool DimensionsToypad::move(int from, int to)
