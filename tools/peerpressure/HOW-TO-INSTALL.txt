@@ -74,7 +74,7 @@ Toy Portal 360 doesn't come with any character pictures, but the grid can
 show your own, for example photos of your own figures:
   1. On a PC, name each picture after the figure as the grid shows it
      (Batman.jpg, Spyro.png).
-  2. Convert them with tools/make_pictures.py from the source download:
+  2. Convert them with make_pictures.py (in the PC folder of the download):
        python3 make_pictures.py <folder> Dimensions
      (or Skylanders / Infinity). It needs Pillow: pip install pillow
   3. Copy the .tpi files it makes to Hdd1:\ToyPortal\Pictures\<game>\
