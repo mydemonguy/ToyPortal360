@@ -297,7 +297,7 @@ DWORD XInputGetState(DWORD user, XINPUT_STATE* st)
 {
 	if (user != 0)
 		return 1167; // not connected
-	st->dwPacketNumber = 0;
+	memset(st, 0, sizeof(*st));
 	st->Gamepad.wButtons = fake::buttons;
 	return ERROR_SUCCESS;
 }

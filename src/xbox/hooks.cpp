@@ -158,7 +158,7 @@ extern "C" DWORD HookSetRawEx(DWORD device, BYTE* buffer, DWORD length)
 
 // ---- import patching --------------------------------------------------------
 
-static PVOID resolve(const char* module, DWORD ordinal)
+PVOID hooks_resolve_export(const char* module, DWORD ordinal)
 {
 	HANDLE h = NULL;
 	PVOID addr = NULL;
@@ -185,6 +185,7 @@ extern "C" DWORD HookGetProcAddress(HANDLE module, DWORD ordinal, PVOID* address
 	}
 	if (st != 0 || !address || !*address)
 		return st;
+	*address = grid_swap_lookup(*address);
 	PVOID hook = NULL;
 	if (*address == (PVOID)s_real_get) hook = HOOK_ENTRY(tp_entry_get_raw, HookGetRaw);
 	else if (*address == (PVOID)s_real_set) hook = HOOK_ENTRY(tp_entry_set_raw, HookSetRaw);
@@ -200,12 +201,13 @@ extern "C" DWORD HookGetProcAddress(HANDLE module, DWORD ordinal, PVOID* address
 
 bool hooks_resolve()
 {
-	s_real_get = (GetRaw_t)resolve("xam.xex", kOrdXamInputNonControllerGetRaw);
-	s_real_set = (SetRaw_t)resolve("xam.xex", kOrdXamInputNonControllerSetRaw);
-	s_real_get_ex = (GetRawEx_t)resolve("xam.xex", kOrdXamInputNonControllerGetRawEx);
-	s_real_set_ex = (SetRawEx_t)resolve("xam.xex", kOrdXamInputNonControllerSetRawEx);
-	s_real_get_proc = (GetProc_t)resolve("xboxkrnl.exe", kOrdXexGetProcedureAddress);
+	s_real_get = (GetRaw_t)hooks_resolve_export("xam.xex", kOrdXamInputNonControllerGetRaw);
+	s_real_set = (SetRaw_t)hooks_resolve_export("xam.xex", kOrdXamInputNonControllerSetRaw);
+	s_real_get_ex = (GetRawEx_t)hooks_resolve_export("xam.xex", kOrdXamInputNonControllerGetRawEx);
+	s_real_set_ex = (SetRawEx_t)hooks_resolve_export("xam.xex", kOrdXamInputNonControllerSetRawEx);
+	s_real_get_proc = (GetProc_t)hooks_resolve_export("xboxkrnl.exe", kOrdXexGetProcedureAddress);
 	log_line("XAM: GetRaw=%p SetRaw=%p GetRawEx=%p SetRawEx=%p", s_real_get, s_real_set, s_real_get_ex, s_real_set_ex);
+	grid_hooks_resolve();
 	return s_real_get && s_real_set;
 }
 
@@ -250,7 +252,7 @@ static DWORD thunk_target(const DWORD* w)
 // is usually a pointer the loader fills in followed by the call stub the
 // game branches to; some titles have only the stub, which the loader fills
 // with a jump to the function. Both are recognised.
-static int patch_import(PLDR_DATA_TABLE_ENTRY module, PVOID real, PVOID hook)
+int hooks_patch_import(PLDR_DATA_TABLE_ENTRY module, PVOID real, PVOID hook)
 {
 	if (!real || !module || !module->XexHeaderBase)
 		return 0;
@@ -300,12 +302,13 @@ extern "C" void hooks_wanted(unsigned out[4])
 static int patch_module(PLDR_DATA_TABLE_ENTRY m)
 {
 	int n = 0;
-	n += patch_import(m, (PVOID)s_real_get, HOOK_ENTRY(tp_entry_get_raw, HookGetRaw));
-	n += patch_import(m, (PVOID)s_real_set, HOOK_ENTRY(tp_entry_set_raw, HookSetRaw));
-	n += patch_import(m, (PVOID)s_real_get_ex, HOOK_ENTRY(tp_entry_get_raw_ex, HookGetRawEx));
-	n += patch_import(m, (PVOID)s_real_set_ex, HOOK_ENTRY(tp_entry_set_raw_ex, HookSetRawEx));
+	n += hooks_patch_import(m, (PVOID)s_real_get, HOOK_ENTRY(tp_entry_get_raw, HookGetRaw));
+	n += hooks_patch_import(m, (PVOID)s_real_set, HOOK_ENTRY(tp_entry_set_raw, HookSetRaw));
+	n += hooks_patch_import(m, (PVOID)s_real_get_ex, HOOK_ENTRY(tp_entry_get_raw_ex, HookGetRawEx));
+	n += hooks_patch_import(m, (PVOID)s_real_set_ex, HOOK_ENTRY(tp_entry_set_raw_ex, HookSetRawEx));
 	// Not counted: the title is only a toy game once it looks one up.
-	patch_import(m, (PVOID)s_real_get_proc, HOOK_ENTRY(tp_entry_get_proc, HookGetProcAddress));
+	hooks_patch_import(m, (PVOID)s_real_get_proc, HOOK_ENTRY(tp_entry_get_proc, HookGetProcAddress));
+	grid_patch_module(m); // drawing and controller hooks for the grid
 	return n;
 }
 

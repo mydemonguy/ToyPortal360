@@ -153,6 +153,18 @@ Start a Skylanders, LEGO Dimensions or Disney Infinity game. A notification says
 
 Press **B** on any screen to go back.
 
+### Character grid (LB + RB + Y)
+
+Hold **LB + RB + Y** for a 4x4 grid of every figure the game knows, drawn over the game's picture.
+
+- Move with the **d-pad** or **left stick**. **LB / RB** turn the page.
+- **A** puts the figure under the cursor on the portal. If you have no file for it yet, one is made first, in the same folder and with the same name the Create menu uses. **A** again takes it off.
+- Figures that are on the portal are green, with a white mark in the corner.
+- **B** closes the grid. The game doesn't see your buttons while the grid is open.
+- Spots are picked for you. Dimensions uses the centre pad first, then left, then right. Infinity puts characters on Player 1, then Player 2, and other pieces where they belong.
+
+The grid hooks the kernel's `VdSwap`, which every game calls to show a frame, and draws into that frame from a separate thread. If a game's picture is in a format it can't draw on, a message says so and the normal menu still works. This part hasn't been tried on a console yet: see `log.txt` (lines starting `Grid:`) if it misbehaves.
+
 ## Settings (`toyportal.ini`)
 
 The plugin rereads this file every time a game starts.
@@ -162,6 +174,7 @@ The plugin rereads this file every time a game starts.
 | `mode` | `emulate` | `passthrough` leaves a real portal alone. |
 | `device` | `auto` | Force `skylanders`, `dimensions` or `infinity`. |
 | `combo` | `LB+RB+BACK` | Buttons held to open the menu. Any of: LB RB BACK START UP DOWN LEFT RIGHT LS RS A B X Y. |
+| `grid_combo` | `LB+RB+Y` | Buttons held to open the character grid. `off` turns the grid off. |
 | `log` | `0` | `1` writes every portal packet to `log.txt`. |
 | `status_interval_ms` | `20` | Gap between idle Skylanders status packets. |
 | `idle_result` | `0` | Result code returned when the game reads and nothing is waiting. |
@@ -193,6 +206,7 @@ Run `tests/run_tests.sh`. It needs `g++` and Python 3 with the `cryptography` pa
    - The 360 frame wrapping, both bare and wrapped.
    - Infinity session: activate, seed, challenge, placing a figure, present-figures list, UID, reading and writing blocks, removing.
    - All 87 Dimensions characters and all 322 Infinity pieces go through create, then read the id back.
+   - The character grid (`tests/test_grid.inc`): the tiling maths against a copy of Xenia's `Tiled2D`, colour packing for every byte order, reading the texture header, copying the grid into tiled and linear pictures at 1x, 2x and 3x, word wrapping, the cursor and paging, key repeat, and the drawn image.
    - 3,400 crypto vectors are compared with `tests/rpcs3_reference.py`. That is a line-by-line Python translation of RPCS3's maths, with SHA-1 and AES checked against Python's `hashlib` and `cryptography` libraries.
 2. **The whole plugin, end to end (PowerPC under QEMU).** `tests/test_xbox.cpp` runs the real `src/xbox` code against a fake Xbox runtime in `tests/xdk_stub`. That runtime fakes the kernel and XAM exports, the file API (backed by a temp folder), controller input and the system message box and keyboard (driven by a script). The test:
    - boots the plugin through `DllMain`
@@ -219,7 +233,9 @@ Run `tests/run_tests.sh`. It needs `g++` and Python 3 with the `cryptography` pa
    - It plays the game through hooked imports. That covers Dimensions in both builds, plus Skylanders, Infinity and an unknown protocol in the DashLaunch build.
    - It drives the menu, and checks figure files, the log and how threads end.
 
-   This runs the clang-built console code itself, including the runtime, `printf`, trampolines and hook entries. The one change is that qemu-ppc is 32-bit, so the 64-bit register saves in the five entry wrappers become 32-bit ones. `tests/xex_run/check_infinity_file.py` decrypts the Infinity figure the binary created, using Python's own SHA-1 and AES.
+   - In `grid` mode it plays a game that swaps between two tiled 640x480 front buffers through a hooked `VdSwap`. It checks that all ten `VdSwap` arguments arrive, then opens the character grid and checks the grid's pixels in both buffers, that the game's controller reads are held back, and that A makes and places a figure, A again removes it, RB turns the page and B closes the grid.
+
+   This runs the clang-built console code itself, including the runtime, `printf`, trampolines and hook entries. The one change is that qemu-ppc is 32-bit, so the 64-bit register saves in the entry wrappers become 32-bit ones. `tests/xex_run/check_infinity_file.py` decrypts the Infinity figure the binary created, using Python's own SHA-1 and AES.
 
 `tests/check_xbox_syntax.sh` type-checks the 360-only code against the stand-in SDK headers.
 
@@ -230,6 +246,7 @@ Run `tests/run_tests.sh`. It needs `g++` and Python 3 with the `cryptography` pa
 - The 64-bit register saves, which are checked by reading the code, not by running it.
 - Peer Pressure's sideload ini format.
 - How each real game frames its portal packets. Dimensions' framing is known from the Xenia fork. Skylanders' and Infinity's are guesses, handled both ways.
+- Drawing the character grid on real hardware. The front buffer's address, format and tiling follow Xenia, but whether games show the grid steadily, flicker, or use a format it can't draw on is only known from a console.
 
 A first run on a console with `log = 1` is still the real test.
 

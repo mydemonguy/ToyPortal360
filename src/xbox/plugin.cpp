@@ -101,7 +101,7 @@ static void notify_ready()
 	CRUMB("09-NOTIFY", g_config.emulate);
 	if (g_config.emulate)
 		notify(g_config.combo == (XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER | XINPUT_GAMEPAD_BACK) ?
-			L"Toy Portal 360 ready - hold LB+RB+Back for the menu" :
+			L"Toy Portal 360 ready - hold LB+RB+Back for the menu, LB+RB+Y for the grid" :
 			L"Toy Portal 360 ready - use your menu buttons");
 }
 

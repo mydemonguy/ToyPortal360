@@ -557,6 +557,8 @@ static void test_search()
 	CHECK(strcmp(safe, "Dragon_s Peak_ Big_Name") == 0);
 }
 
+#include "test_grid.inc"
+
 int main(int argc, char** argv)
 {
 	if (argc > 1 && strcmp(argv[1], "--vectors") == 0)
@@ -574,6 +576,7 @@ int main(int argc, char** argv)
 	test_inf_create_all();
 	test_inf_session();
 	test_search();
+	test_grid();
 	printf("%d passed, %d failed\n", g_pass, g_fail);
 	return g_fail ? 1 : 0;
 }

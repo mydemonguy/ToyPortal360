@@ -6,8 +6,8 @@
 #include <stdio.h>
 #include <ppcintrinsics.h>
 
-static volatile bool s_menu_open = false;
-static DWORD s_user = 0;
+volatile bool g_menu_open = false; // the menu or the grid is showing
+DWORD g_menu_user = 0;
 
 // ---- small UI helpers -------------------------------------------------------
 
@@ -66,7 +66,7 @@ static int ask(const wchar_t* title, const wchar_t* text, int count,
 		XOVERLAPPED ov;
 		memset(&result, 0, sizeof(result));
 		memset(&ov, 0, sizeof(ov));
-		const DWORD r = XShowMessageBoxUI(s_user, title, text, count, buttons, focus, XMB_NOICON, &result, &ov);
+		const DWORD r = XShowMessageBoxUI(g_menu_user, title, text, count, buttons, focus, XMB_NOICON, &result, &ov);
 		if (r == ERROR_ACCESS_DENIED) // another system UI is still closing
 		{
 			Sleep(100);
@@ -88,6 +88,11 @@ static void say(const wchar_t* title, const wchar_t* text)
 	ask(title, text, 1, L"OK", NULL, NULL, 0);
 }
 
+void menu_say(const wchar_t* title, const wchar_t* text)
+{
+	say(title, text);
+}
+
 // On-screen keyboard. Returns false if cancelled. Like the message boxes, it
 // is refused while the previous system window is still closing (on a console:
 // choosing Create opened nothing), so it retries; any other failure is shown.
@@ -100,7 +105,7 @@ static bool keyboard(const wchar_t* title, const wchar_t* description, char* out
 	{
 		memset(result, 0, sizeof(result));
 		memset(&ov, 0, sizeof(ov));
-		r = XShowKeyboardUI(s_user, VKBD_DEFAULT, L"", title, description, result, 63, &ov);
+		r = XShowKeyboardUI(g_menu_user, VKBD_DEFAULT, L"", title, description, result, 63, &ov);
 		if (r != ERROR_ACCESS_DENIED)
 			break;
 		Sleep(100);
@@ -556,29 +561,18 @@ static u32 random32()
 	return (u32)__mftb() * 2654435761u ^ GetTickCount();
 }
 
-static void action_create(ToyKind kind)
+// Makes a new figure file for entry k of the game's name table (an index as
+// the *_search functions return it). On failure *error holds the system
+// error, or kCreateNotPossible for a piece that can't be made.
+bool create_figure_file(ToyKind kind, int k, char* path, int path_size, DWORD* error)
 {
-	char query[48] = "";
-	if (!keyboard(L"Create new figure", L"Type part of the figure's name (for example: spyro, batman, gandalf, sulley).", query, sizeof(query)))
-		return;
-	s_matches.kind = kind;
-	s_matches.count = kind == kToySkylanders ? sky_search(query, s_matches.idx, 600) :
-	                  kind == kToyDimensions ? dim_search(query, s_matches.idx, 600) : inf_search(query, s_matches.idx, 600);
-	if (!s_matches.count)
-	{
-		say(L"Create new figure", L"No figure matches that name.");
-		return;
-	}
-	const int i = browse(L"Create new figure", L"Create", s_matches.count, match_label, NULL);
-	if (i < 0)
-		return;
-
 	static BYTE data[kSkyFigureSize];
 	const char* name;
 	const char* ext;
 	DWORD size;
 	int count = 0;
-	const int k = s_matches.idx[i];
+	path[0] = 0;
+	*error = 0;
 	if (kind == kToySkylanders)
 	{
 		const SkyName& s = sky_names(&count)[k];
@@ -598,8 +592,8 @@ static void action_create(ToyKind kind)
 		uid[4] = (u8)b; uid[5] = (u8)(b >> 8); uid[6] = (u8)(b >> 16);
 		if (!InfinityBase::create_blank(data, f.number, f.series, uid))
 		{
-			say(L"Create new figure", L"That piece can't be created.");
-			return;
+			*error = kCreateNotPossible;
+			return false;
 		}
 		name = f.name;
 		ext = "bin";
@@ -619,12 +613,38 @@ static void action_create(ToyKind kind)
 		size = kDimFigureSize;
 	}
 
-	char folder[96], safe[48], path[200];
+	char folder[96], safe[48];
 	figure_folder(kind, folder, sizeof(folder));
 	safe_file_name(name, safe, sizeof(safe));
-	DWORD error = 0;
-	if (!create_unique_file(folder, safe, ext, data, size, path, sizeof(path), &error))
+	return create_unique_file(folder, safe, ext, data, size, path, path_size, error);
+}
+
+static void action_create(ToyKind kind)
+{
+	char query[48] = "";
+	if (!keyboard(L"Create new figure", L"Type part of the figure's name (for example: spyro, batman, gandalf, sulley).", query, sizeof(query)))
+		return;
+	s_matches.kind = kind;
+	s_matches.count = kind == kToySkylanders ? sky_search(query, s_matches.idx, 600) :
+	                  kind == kToyDimensions ? dim_search(query, s_matches.idx, 600) : inf_search(query, s_matches.idx, 600);
+	if (!s_matches.count)
 	{
+		say(L"Create new figure", L"No figure matches that name.");
+		return;
+	}
+	const int i = browse(L"Create new figure", L"Create", s_matches.count, match_label, NULL);
+	if (i < 0)
+		return;
+
+	char path[200];
+	DWORD error = 0;
+	if (!create_figure_file(kind, s_matches.idx[i], path, sizeof(path), &error))
+	{
+		if (error == kCreateNotPossible)
+		{
+			say(L"Create new figure", L"That piece can't be created.");
+			return;
+		}
 		wchar_t text[300], wpath[200];
 		char shown[200];
 		display_path(path, shown, sizeof(shown));
@@ -667,10 +687,9 @@ static void action_more(ToyKind kind)
 	}
 }
 
-static DWORD WINAPI menu_thread(LPVOID)
+// The game's portal kind; asks the player if the game hasn't said yet.
+ToyKind menu_pick_kind()
 {
-	flush_dirty_figures();
-
 	EnterCriticalSection(&g_lock);
 	ToyKind kind = g_router.kind();
 	LeaveCriticalSection(&g_lock);
@@ -690,6 +709,15 @@ static DWORD WINAPI menu_thread(LPVOID)
 		}
 	}
 
+	return kind;
+}
+
+static DWORD WINAPI menu_thread(LPVOID)
+{
+	flush_dirty_figures();
+
+	ToyKind kind = menu_pick_kind();
+
 	while (kind != kToyUnknown)
 	{
 		wchar_t text[400], title[64];
@@ -708,11 +736,17 @@ static DWORD WINAPI menu_thread(LPVOID)
 			action_more(kind);
 	}
 
-	s_menu_open = false;
+	g_menu_open = false;
 	return 0;
 }
 
-// Called by the watcher thread every tick.
+static bool combo_pressed(WORD now, WORD before, WORD combo)
+{
+	return combo && (now & combo) == combo && (before & combo) != combo;
+}
+
+// Called by the watcher thread every tick: LB+RB+Back opens the menu,
+// LB+RB+Y the character grid (toyportal.ini: combo, grid_combo).
 void menu_poll()
 {
 	static WORD s_prev[4] = {0, 0, 0, 0};
@@ -725,10 +759,10 @@ void menu_poll()
 			continue;
 		}
 		const WORD now = st.Gamepad.wButtons;
-		const bool held = (now & g_config.combo) == g_config.combo;
-		const bool was = (s_prev[u] & g_config.combo) == g_config.combo;
+		const bool grid = combo_pressed(now, s_prev[u], g_config.grid_combo);
+		const bool menu = !grid && combo_pressed(now, s_prev[u], g_config.combo);
 		s_prev[u] = now;
-		if (!held || was || s_menu_open)
+		if ((!grid && !menu) || g_menu_open)
 			continue;
 
 		if (!g_title_hooked)
@@ -736,14 +770,20 @@ void menu_poll()
 			notify(L"Toy Portal 360: no toy game is running");
 			continue;
 		}
-		s_user = u;
-		s_menu_open = true;
+		g_menu_user = u;
+		g_menu_open = true;
+		if (grid)
+		{
+			if (!grid_start())
+				g_menu_open = false;
+			continue;
+		}
 #ifdef TOYPORTAL_SIDELOAD
 		const bool system_thread = false; // the game owns this DLL's threads
 #else
 		const bool system_thread = true;
 #endif
 		if (!tp_start_thread(menu_thread, NULL, NULL, system_thread))
-			s_menu_open = false;
+			g_menu_open = false;
 	}
 }

@@ -224,6 +224,8 @@ static void test_dimensions_title(FakeTitle* t)
 	CHECK(t->vars[0] != t->real[0] && t->vars[2] != t->real[1]);
 	CHECK(t->vars[4] == 0xDEAD0000); // unrelated import untouched
 	CHECK(t->stubs[0] >> 16 == 0x3D60 && t->stubs[2] == 0x7D6903A6 && t->stubs[3] == 0x4E800420);
+	for (int i = 0; i < 100 && !any_note_contains("ready"); i++) // shown just after hooking
+		Sleep(10);
 	CHECK(any_note_contains("ready"));
 
 	BYTE pkt[32], reply[32];

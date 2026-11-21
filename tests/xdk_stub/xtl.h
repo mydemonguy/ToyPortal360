@@ -11,6 +11,7 @@
 
 typedef unsigned long DWORD;
 typedef unsigned short WORD, USHORT;
+typedef short SHORT;
 typedef unsigned char BYTE;
 typedef int BOOL;
 typedef long LONG, HRESULT;
@@ -92,7 +93,7 @@ char* strtok_s(char*, const char*, char**);
 #define XINPUT_GAMEPAD_B 0x2000
 #define XINPUT_GAMEPAD_X 0x4000
 #define XINPUT_GAMEPAD_Y 0x8000
-struct XINPUT_GAMEPAD { WORD wButtons; };
+struct XINPUT_GAMEPAD { WORD wButtons; BYTE bLeftTrigger, bRightTrigger; SHORT sThumbLX, sThumbLY, sThumbRX, sThumbRY; };
 struct XINPUT_STATE { DWORD dwPacketNumber; XINPUT_GAMEPAD Gamepad; };
 DWORD XInputGetState(DWORD, XINPUT_STATE*);
 

@@ -41,7 +41,7 @@ console is switched on. So every time:
   2. Start the game straight away, before any other game or app.
 
 When the game looks for the Toy Pad you get a pop-up:
-  "Toy Portal 360 ready - hold LB+RB+Back for the menu"
+  "Toy Portal 360 ready - hold LB+RB+Back for the menu, LB+RB+Y for the grid"
 
 3. Use the menu
 ---------------
@@ -55,6 +55,15 @@ In the game, hold LB + RB + Back to open the menu.
 To make a figure: More > Create, type part of its name (for example
 gandalf or batman), pick it from the list, then Place it and choose a
 pad spot (left, centre or right).
+
+Character grid
+--------------
+Hold LB + RB + Y for a grid of every figure in the game.
+  d-pad / stick   move        LB / RB   change page
+  A               put the figure on (makes its file if you have none)
+  A again         take it off
+  B               close
+Figures on the pad are green. (New and not yet tested on a console.)
 
 Where figures are kept
 ----------------------

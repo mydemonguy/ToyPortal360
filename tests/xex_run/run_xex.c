@@ -256,10 +256,15 @@ static u32 k_XexGetModuleHandle(const char* name, void** h)
 	return 0;
 }
 static u32 k_XexGetProcedureAddress(void* h, u32 ord, void** out);
+static u32 x_XamInputGetState(u32 user, u32 flags, u8* state);
+static u32 x_XamInputGetKeystroke(u32 user, u32 flags, u8* key);
+static u32 x_XamInputGetKeystrokeEx(u32* user, u32 flags, u8* key);
+static void k_VdSwap(u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
 static u32 k_XexGetProcedureAddress(void* h, u32 ord, void** out)
 {
 	if (h == (void*)0x5678) /* xboxkrnl.exe: only the lookup function itself */
 	{
+		if (ord == 0x25B) { *out = (void*)k_VdSwap; return 0; }
 		if (ord != 0x197) return 0xC0000139;
 		*out = (void*)k_XexGetProcedureAddress;
 		return 0;
@@ -272,6 +277,9 @@ static u32 k_XexGetProcedureAddress(void* h, u32 ord, void** out)
 	case 0x52A: f = (void*)x_NonControllerGetRawEx; break;
 	case 0x52B: f = (void*)x_NonControllerSetRawEx; break;
 	case 0x290: f = (void*)x_XNotifyQueueUI; break;
+	case 0x191: f = (void*)x_XamInputGetState; break;
+	case 0x193: f = (void*)x_XamInputGetKeystroke; break;
+	case 0x198: f = (void*)x_XamInputGetKeystrokeEx; break;
 	}
 	*out = f;
 	return f ? 0 : 0xC0000225;
@@ -425,6 +433,28 @@ static u32 x_XamInputGetState(u32 user, u32 flags, u8* state)
 	state[4] = (u8)(g_buttons >> 8);
 	state[5] = (u8)g_buttons;
 	return 0;
+}
+static u32 x_XamInputGetKeystroke(u32 user, u32 flags, u8* key)
+{
+	(void)user; (void)flags; (void)key;
+	return 0x10D2; /* ERROR_EMPTY */
+}
+static u32 x_XamInputGetKeystrokeEx(u32* user, u32 flags, u8* key)
+{
+	(void)user; (void)flags; (void)key;
+	return 0x10D2;
+}
+
+/* VdSwap: ten arguments, the last two on the stack. Records what it got so
+ * the test can check the hook passed everything through. */
+static volatile int g_swap_calls;
+static volatile u32 g_swap_args[10];
+static void k_VdSwap(u32 a0, u32 a1, u32 a2, u32 a3, u32 a4, u32 a5, u32 a6, u32 a7, u32 a8, u32 a9)
+{
+	const u32 a[10] = {a0, a1, a2, a3, a4, a5, a6, a7, a8, a9};
+	for (int i = 0; i < 10; i++)
+		g_swap_args[i] = a[i];
+	g_swap_calls++;
 }
 typedef struct { u32 result, length, context, event, routine, rctx, ext; } Overlapped;
 static u32 x_XamGetOverlappedResult(Overlapped* ov, u32* res, u32 wait)
@@ -749,6 +779,18 @@ static int file_bytes(const char* xbox_path, u8* out, size_t n)
 	return got == n;
 }
 
+static int log_contains(const char* s);
+static int wait_log(const char* s, int ms)
+{
+	for (int i = 0; i < ms / 50; i++)
+	{
+		if (log_contains(s))
+			return 1;
+		usleep(50000);
+	}
+	return log_contains(s);
+}
+
 static int log_contains(const char* s)
 {
 	static char buf[65536];
@@ -763,6 +805,288 @@ static int log_contains(const char* s)
 	return strstr(buf, s) != NULL;
 }
 
+/* A game that draws: it imports GetRawEx/SetRawEx and XamInputGetState from
+ * XAM and VdSwap from the kernel, each as an address slot plus call stub
+ * (stubs: 0 GetRawEx, 1 SetRawEx, 2 XamInputGetState, 3 VdSwap). */
+typedef struct
+{
+	u8 ldr[0x64];
+	u8 header[512];
+	u32 slots[8];
+	u32* stubs;
+	u32 real[4];
+} DrawGame;
+
+static void make_draw_game(DrawGame* g)
+{
+	memset(g, 0, sizeof(*g));
+	g->stubs = mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	*(u32*)(g->ldr + 0x58) = (u32)(uintptr_t)g->header;
+	*(u32*)(g->ldr + 0x50) = 11;
+	u32* d = (u32*)g->header;
+	d[1] = 24;
+	d[2] = 2;
+	memcpy(g->header + 12, "xam.xex\0", 8);
+	memcpy(g->header + 20, "xboxkrnl.exe\0\0\0\0", 16);
+	u8* table = g->header + 36;
+	void* f;
+	for (int m = 0; m < 2; m++)
+	{
+		const int first = m ? 3 : 0, n = m ? 1 : 3;
+		*(u16*)(table + 0x26) = (u16)(n * 2);
+		*(u32*)table = 0x28 + n * 8;
+		u32* records = (u32*)(table + 0x28);
+		for (int i = 0; i < n; i++)
+		{
+			const int k = first + i;
+			static const u32 ords[4] = {0x52A, 0x52B, 0x191, 0x25B};
+			k_XexGetProcedureAddress(m ? (void*)0x5678 : (void*)0x1234, ords[k], &f);
+			g->real[k] = (u32)(uintptr_t)f;
+			g->slots[k * 2] = g->real[k];
+			u32* st = g->stubs + k * 4;
+			st[0] = 0x3D600000 | (g->real[k] >> 16); st[1] = 0x616B0000 | (g->real[k] & 0xFFFF);
+			st[2] = 0x7D6903A6; st[3] = 0x4E800420;
+			records[i * 2] = (u32)(uintptr_t)&g->slots[k * 2];
+			records[i * 2 + 1] = (u32)(uintptr_t)st;
+		}
+		table += *(u32*)table;
+	}
+	d[0] = (u32)(table - g->header);
+}
+
+/* Two 640x480 tiled A8R8G8B8 front buffers the "game" swaps between. */
+enum { FB_W = 640, FB_H = 480, FB_SPAN = FB_W * FB_H * 4 };
+static u8* g_fb[2];
+static u32 g_fb_addr[2];
+static u32 g_fetch[2][6] __attribute__((aligned(16)));
+static volatile int g_render, g_render_quit;
+static DrawGame g_draw;
+
+typedef void (*VdSwapFn)(u32, u32, u32, u32, u32, u32, u32, u32, u32, u32);
+static u32 g_fmt = 6, g_colorspace = 0, g_w = FB_W, g_h = FB_H;
+static u32 g_ring[64];
+
+static u32 tiled(u32 x, u32 y) /* Xenia's Tiled2D, 4-byte blocks, pitch 640 */
+{
+	const u32 outer = ((y >> 5) * (FB_W >> 5) + (x >> 5)) << 6, inner = (((y >> 1) & 7) << 3) | (x & 7);
+	const u32 b = (outer | inner) << 2, bank = (y >> 4) & 1, pipe = ((x >> 3) & 3) ^ (((y >> 3) & 1) << 1);
+	return ((y & 1) << 4) | (pipe << 6) | (bank << 11) | (b & 15) | (((b >> 4) & 1) << 5) | (((b >> 5) & 7) << 8) | (b >> 8 << 12);
+}
+static u32 fb_pixel(int i, u32 x, u32 y) { return be32(g_fb[i] + tiled(x, y)); }
+
+static void* render_thread(void* arg)
+{
+	(void)arg;
+	for (u32 frame = 0; !g_render_quit; frame++)
+	{
+		if (!g_render) { usleep(5000); frame--; continue; }
+		const int i = frame & 1;
+		memset(g_fb[i], 0x40, FB_SPAN); /* the GPU resolving the game's picture */
+		((VdSwapFn)(g_draw.stubs + 12))((u32)(uintptr_t)g_ring, (u32)(uintptr_t)g_fetch[i], 1, 2, 0xBEEF0001,
+			(u32)(uintptr_t)&g_fb_addr[i], (u32)(uintptr_t)&g_fmt, (u32)(uintptr_t)&g_colorspace,
+			(u32)(uintptr_t)&g_w, (u32)(uintptr_t)&g_h);
+		usleep(16000);
+	}
+	return NULL;
+}
+
+typedef u32 (*GetRawExFn)(u32, u8*, u32*, u16*);
+static u32 draw_read(u8* out)
+{
+	for (int i = 0; i < 300; i++)
+	{
+		u32 len = 32;
+		u16 st = 0;
+		memset(out, 0, 32);
+		if (((GetRawExFn)g_draw.stubs)(5, out, &len, &st) != 0)
+			return 0;
+		if (len)
+			return len;
+		usleep(5000);
+	}
+	return 0;
+}
+
+static void press(u16 buttons, int ms)
+{
+	g_buttons = buttons;
+	usleep(ms * 1000);
+	g_buttons = 0;
+	usleep(150000);
+}
+
+static u16 game_buttons(void)
+{
+	u8 st[16];
+	memset(st, 0xAA, sizeof(st));
+	if (((u32 (*)(u32, u32, u8*))(g_draw.stubs + 8))(0, 1, st) != 0)
+		return 0xFFFF;
+	return (u16)(st[4] << 8 | st[5]);
+}
+
+/* GRID_PPM=file.ppm saves what the first front buffer shows (untiled). */
+static void save_frame(const char* path)
+{
+	FILE* f = path ? fopen(path, "wb") : NULL;
+	if (!f)
+		return;
+	fprintf(f, "P6 %d %d 255\n", FB_W, FB_H);
+	for (u32 y = 0; y < FB_H; y++)
+		for (u32 x = 0; x < FB_W; x++)
+		{
+			const u32 v = fb_pixel(0, x, y);
+			const u8 rgb[3] = {(u8)(v >> 16), (u8)(v >> 8), (u8)v};
+			fwrite(rgb, 1, 3, f);
+		}
+	fclose(f);
+}
+
+static int count_files(const char* xbox_dir)
+{
+	char p[600];
+	host_path(xbox_dir, p, sizeof(p));
+	DIR* d = opendir(p);
+	if (!d) return -1;
+	int n = 0;
+	struct dirent* e;
+	while ((e = readdir(d)))
+		n += e->d_name[0] != '.';
+	closedir(d);
+	return n;
+}
+
+
+/* The grid's colours as the A8R8G8B8 front buffer holds them. */
+enum { C_TITLE = 0xFF1E468C, C_CELL = 0xFF343A48, C_CELL_ON = 0xFF24843A, C_CURSOR = 0xFFFFCC00, C_GAME = 0x40404040 };
+/* At 640x480 the grid is drawn 1x at (32, 88). */
+#define GX(x) (32 + (x))
+#define GY(y) (88 + (y))
+
+static int run_grid(u32 (*entry)(void*, u32, void*))
+{
+	make_draw_game(&g_draw);
+	for (int i = 0; i < 2; i++)
+	{
+		g_fb[i] = aligned_alloc(4096, FB_SPAN);
+		g_fb_addr[i] = (u32)(uintptr_t)g_fb[i];
+		/* xe_gpu_texture_fetch_t: tiled, pitch 640/32, k_8_8_8_8, 8in32, 640x480, .zyxw */
+		g_fetch[i][0] = (1u << 31) | ((FB_W / 32) << 22) | 2;
+		g_fetch[i][1] = 6 | (2u << 6) | (g_fb_addr[i] & 0xFFFFF000u);
+		g_fetch[i][2] = (FB_W - 1) | ((FB_H - 1) << 13);
+		g_fetch[i][3] = (2 | (1 << 3) | (0 << 6) | (3 << 9)) << 1;
+	}
+	g_exec_module = g_draw.ldr;
+	g_title_id = 0x4D530A13;
+	CHECK(entry((void*)(uintptr_t)g_base, 1, NULL) == 1);
+	CHECK(g_draw.slots[6] != g_draw.real[3]);      /* VdSwap import hooked */
+	CHECK(g_draw.slots[4] != g_draw.real[2]);      /* XamInputGetState import hooked */
+	CHECK(g_draw.slots[0] != g_draw.real[0]);      /* and the toy pad */
+
+	/* The game wakes the toy pad, so the grid knows it is LEGO Dimensions. */
+	u8 pkt[32], rp[32];
+	memset(pkt, 0, 32);
+	pkt[0] = 0x0B; pkt[1] = 0x11; pkt[2] = 0x55; pkt[3] = 0x0F; pkt[4] = 0xB0; pkt[5] = 0x01;
+	CHECK(((u32 (*)(u32, u8*, u32))(g_draw.stubs + 4))(5, pkt, 32) == 0);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x55);
+	for (int i = 0; i < 300 && !note_contains("ready"); i++)
+		usleep(20000);
+	CHECK(note_contains("LB+RB+Y for the grid"));
+
+	pthread_t rt;
+	g_render = 1;
+	pthread_create(&rt, NULL, render_thread, NULL);
+	usleep(200000);
+	CHECK(g_swap_calls > 3);
+	/* All ten arguments reach the real VdSwap, the last two from the stack. */
+	CHECK(g_swap_args[0] == (u32)(uintptr_t)g_ring && g_swap_args[4] == 0xBEEF0001 &&
+		g_swap_args[8] == (u32)(uintptr_t)&g_w && g_swap_args[9] == (u32)(uintptr_t)&g_h);
+	g_buttons = 0x4000; /* X */
+	usleep(60000);
+	CHECK(game_buttons() == 0x4000); /* the game sees the controller */
+	g_buttons = 0;
+
+	/* LB+RB+Y opens the grid. */
+	press(0x0100 | 0x0200 | 0x8000, 250);
+	CHECK(wait_log("Grid: drawing on front buffer", 5000));
+	CHECK(log_contains("tiled format 6 endian 2 swizzle 60A at 1x"));
+	g_buttons = 0x4000;
+	usleep(60000);
+	CHECK(game_buttons() == 0); /* held back while the grid is open */
+	g_buttons = 0;
+	CHECK(wait_log("Grid: 0 Dimensions figure file(s) found", 5000));
+
+	/* Stop the game's frames: the grid keeps drawing on both buffers. */
+	g_render = 0;
+	usleep(300000);
+	for (int i = 0; i < 2; i++)
+	{
+		CHECK(fb_pixel(i, GX(4), GY(4)) == C_TITLE);
+		CHECK(fb_pixel(i, GX(7 + 130), GY(30 + 50)) == C_CELL);
+		CHECK(fb_pixel(i, GX(7 - 1), GY(30 + 20)) == C_CURSOR);   /* cursor on the first cell */
+		CHECK(fb_pixel(i, GX(7 + 142 + 130), GY(30 + 50)) == C_CELL);
+		CHECK(fb_pixel(i, 5, 5) == C_GAME && fb_pixel(i, 635, 475) == C_GAME); /* rest untouched */
+	}
+	g_render = 1;
+
+	/* A: makes Batman (the first character) and puts him on the centre pad. */
+	press(0x1000, 120);
+	char path[64];
+	snprintf(path, sizeof(path), "TPHDD:\\ToyPortal\\Dimensions\\Batman.bin");
+	u8 tag[180];
+	for (int i = 0; i < 100 && !file_bytes(path, tag, 180); i++)
+		usleep(30000);
+	CHECK(file_bytes(path, tag, 180));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 0);
+	CHECK(wait_log("Grid: Made and placed Batman", 3000));
+	g_render = 0;
+	usleep(300000);
+	CHECK(fb_pixel(0, GX(7 + 130), GY(30 + 50)) == C_CELL_ON && fb_pixel(1, GX(7 + 130), GY(30 + 50)) == C_CELL_ON);
+	save_frame(getenv("GRID_PPM"));
+	g_render = 1;
+
+	/* A again takes him off. */
+	press(0x1000, 120);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[7] == 1);
+	CHECK(wait_log("Grid: Removed Batman", 3000));
+	g_render = 0;
+	usleep(300000);
+	CHECK(fb_pixel(0, GX(7 + 130), GY(30 + 50)) == C_CELL);
+	g_render = 1;
+
+	/* RB turns the page; A there makes a different figure; A once more on
+	 * Batman's page uses his file instead of making another. */
+	press(0x0200, 120);
+	press(0x1000, 120);
+	CHECK(wait_log("Grid: Made and placed", 3000));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[7] == 0);
+	CHECK(count_files("TPHDD:\\ToyPortal\\Dimensions") == 2);
+	press(0x0100, 120);
+	press(0x1000, 120);
+	CHECK(wait_log("Grid: Placed Batman", 3000));
+	CHECK(count_files("TPHDD:\\ToyPortal\\Dimensions") == 2);
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 0); /* centre taken: left pad */
+
+	/* B closes it: the game gets the controller back and its frames win. */
+	press(0x2000, 120);
+	CHECK(wait_log("Grid closed (B)", 3000));
+	g_buttons = 0x4000;
+	usleep(60000);
+	CHECK(game_buttons() == 0x4000);
+	g_buttons = 0;
+	usleep(200000);
+	g_render = 0;
+	usleep(200000);
+	CHECK(fb_pixel(0, GX(4), GY(4)) == C_GAME && fb_pixel(1, GX(4), GY(4)) == C_GAME);
+
+	g_render_quit = 1;
+	pthread_join(rt, NULL);
+	CHECK(entry((void*)(uintptr_t)g_base, 0, NULL) == 1);
+	usleep(200000);
+	CHECK(g_threads == 0);
+	printf("grid: %d passed, %d failed\n", g_pass, g_fail);
+	return g_fail ? 1 : 0;
+}
+
 typedef u32 (*Entry)(void*, u32, void*);
 
 int main(int argc, char** argv)
@@ -771,12 +1095,16 @@ int main(int argc, char** argv)
 	if (argc < 4) { printf("usage: run_xex <file.xex> <dashlaunch|sideload> <dir>\n"); return 2; }
 	g_root = argv[3];
 	const int lookup = strcmp(argv[2], "lookup") == 0;
+	const int grid = strcmp(argv[2], "grid") == 0;
 	const int modules = strcmp(argv[2], "modules") == 0;
-	const int sideload = lookup || modules || strcmp(argv[2], "sideload") == 0;
+	const int sideload = lookup || modules || grid || strcmp(argv[2], "sideload") == 0;
 	g_in_title = sideload;
 	load_xex(argv[1]);
 	const Entry entry = (Entry)(uintptr_t)g_entry;
 	CHECK(g_flags == (sideload ? 0x9u : 0x8u)); /* TITLE|DLL vs DLL */
+
+	if (grid)
+		return run_grid(entry);
 
 	if (modules)
 	{

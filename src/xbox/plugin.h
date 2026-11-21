@@ -11,6 +11,7 @@ struct Config
 	bool log_traffic;      // write every packet to log.txt
 	ToyKind device;        // kToyUnknown = auto-detect
 	WORD combo;            // XINPUT_GAMEPAD_* buttons held together to open the menu
+	WORD grid_combo;       // ... and the character grid (0 = off)
 	DWORD status_interval_ms;
 	DWORD idle_result;     // XAM result returned when there is nothing to read
 	DWORD sky_wrap_len;    // length byte for wrapped Skylanders replies (0 = auto)
@@ -50,9 +51,24 @@ void flush_dirty_figures();
 bool hooks_resolve();
 int hooks_patch_title(PLDR_DATA_TABLE_ENTRY title);
 void ppc_write_jump(DWORD* at, DWORD destination); // exposed for tests
+PVOID hooks_resolve_export(const char* module, DWORD ordinal);
+// Points every import of `real` in the module at `hook`; returns how many.
+int hooks_patch_import(PLDR_DATA_TABLE_ENTRY module, PVOID real, PVOID hook);
 
 // menu.cpp
 void menu_poll();
 void notify(const wchar_t* text);
+extern volatile bool g_menu_open; // the menu or the grid is showing
+extern DWORD g_menu_user;         // the controller that opened it
+void menu_say(const wchar_t* title, const wchar_t* text);
+ToyKind menu_pick_kind();
+enum { kCreateNotPossible = 0xFFFFFFFE };
+bool create_figure_file(ToyKind kind, int table_index, char* path, int path_size, DWORD* error);
+
+// grid.cpp - the on-screen character grid
+void grid_hooks_resolve();
+int grid_patch_module(PLDR_DATA_TABLE_ENTRY m);
+PVOID grid_swap_lookup(PVOID address);
+bool grid_start();
 
 #endif

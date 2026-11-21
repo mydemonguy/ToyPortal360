@@ -84,3 +84,43 @@ tp_ccall:
 	tp_entry tp_entry_get_raw_ex, HookGetRawEx
 	tp_entry tp_entry_set_raw_ex, HookSetRawEx
 	tp_entry tp_entry_get_proc, HookGetProcAddress
+	tp_entry tp_entry_input_state, HookInputGetState
+	tp_entry tp_entry_input_key, HookInputGetKeystroke
+	tp_entry tp_entry_input_key_ex, HookInputGetKeystrokeEx
+
+/*
+ * The game's VdSwap import lands here (src/xbox/grid.cpp). VdSwap takes ten
+ * arguments, the last two on the game's stack, so rather than calling the
+ * real one from C this entry lets HookVdSwapPre look at the first six, then
+ * restores every register and jumps to the real VdSwap with the stack just
+ * as the game left it.
+ */
+	.section .text.tp_entry_vdswap, "ax", @progbits
+	.globl tp_entry_vdswap
+	.type tp_entry_vdswap, @function
+	.balign 4
+tp_entry_vdswap:
+	stwu 1, -0x100(1)
+	mflr 0
+	stw 0, 0x8(1)
+	.irp reg, 3,4,5,6,7,8,9,10
+	stw \reg, 0xe0 + 4 * (\reg - 3)(1)
+	.endr
+	.irp reg, 14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+	std \reg, 0x50 + 8 * (\reg - 14)(1)
+	.endr
+	bl HookVdSwapPre
+	.irp reg, 14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31
+	ld \reg, 0x50 + 8 * (\reg - 14)(1)
+	.endr
+	.irp reg, 3,4,5,6,7,8,9,10
+	lwz \reg, 0xe0 + 4 * (\reg - 3)(1)
+	.endr
+	lwz 0, 0x8(1)
+	mtlr 0
+	addi 1, 1, 0x100
+	lis 11, tp_vdswap_real@ha
+	lwz 11, tp_vdswap_real@l(11)
+	mtctr 11
+	bctr
+	.size tp_entry_vdswap, .-tp_entry_vdswap
