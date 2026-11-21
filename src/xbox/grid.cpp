@@ -382,48 +382,205 @@ static void footer(const char* fmt, const char* name)
 	log_line("Grid: %s", s_footer);
 }
 
-// Puts the figure in `data` on the first free spot it can use.
-static bool place_data(const BYTE* data, const char* path)
+static void footer2(const char* fmt, const char* a, const char* b)
 {
-	bool ok = false;
-	EnterCriticalSection(&g_lock);
+	char sa[32], sb[32];
+	strncpy(sa, a, sizeof(sa) - 1);
+	sa[sizeof(sa) - 1] = 0;
+	strncpy(sb, b, sizeof(sb) - 1);
+	sb[sizeof(sb) - 1] = 0;
+	_snprintf(s_footer, sizeof(s_footer), fmt, sa, sb);
+	s_footer[sizeof(s_footer) - 1] = 0;
+	s_footer_until = GetTickCount() + 3000;
+	log_line("Grid: %s", s_footer);
+}
+
+// ---- swapping when every usable spot is taken --------------------------------
+//
+// A on a new piece when its spots are all full takes off the piece that has
+// been on longest and puts the new one in its place, like lifting a toy off
+// and setting another down. The new one goes on a moment later, so the game
+// sees the old one leave first.
+
+enum { kMaxSpots = 16, kSwapDelayMs = 800 };
+static u32 s_spot_age[kMaxSpots]; // when the grid last put something there (0: before)
+static u32 s_age_clock = 0;
+static ToyKind s_age_kind = kToyUnknown;
+
+struct PendingPlace
+{
+	bool active;
+	DWORD due;
+	int slot;
+	char path[200];
+	char label[64];
+	bool created;
+	BYTE data[kSkyFigureSize];
+};
+static PendingPlace s_pending;
+
+// The spots this piece can use, in the order they're tried.
+static int spots_for(const BYTE* data, int* out)
+{
+	int n = 0;
 	if (s_kind == kToySkylanders)
-		ok = g_router.sky.load(data, path) >= 0;
+	{
+		for (int i = 0; i < kSkySlots; i++)
+			out[n++] = i;
+	}
 	else if (s_kind == kToyDimensions)
 	{
 		static const u8 pads[3] = {kPadCenter, kPadLeft, kPadRight};
-		for (int p = 0; p < 3 && !ok; p++)
-		{
-			const int slot = g_router.dim.first_free_on_pad(pads[p]);
-			if (slot >= 0)
-			{
-				g_router.dim.load(data, path, slot);
-				ok = true;
-			}
-		}
+		for (int p = 0; p < 3; p++)
+			for (int i = 0; i < kDimSlots; i++)
+				if (dimensions_pad_for_slot(i) == pads[p])
+					out[n++] = i;
 	}
 	else
 	{
 		InfPieceKind piece = infinity_piece_kind(InfinityBase::figure_number_of(data));
 		if (piece == kInfUnknown)
 			piece = kInfCharacter;
-		int slot = g_router.inf.free_slot_for(piece, 1);
-		if (slot < 0 && (piece == kInfCharacter || piece == kInfAbilityDisc))
-			slot = g_router.inf.free_slot_for(piece, 2);
-		if (slot >= 0 && !g_router.inf.occupied(slot))
+		switch (piece)
 		{
-			g_router.inf.load(data, path, slot);
-			ok = true;
+		case kInfCharacter: out[n++] = 3; out[n++] = 6; break;
+		case kInfAbilityDisc: out[n++] = 4; out[n++] = 5; out[n++] = 7; out[n++] = 8; break;
+		case kInfPlaySet: out[n++] = 0; break;
+		case kInfHexDisc: out[n++] = 0; out[n++] = 1; out[n++] = 2; break;
+		default: break;
 		}
 	}
+	return n;
+}
+
+static bool spot_taken(int slot)
+{
+	if (s_kind == kToySkylanders)
+		return g_router.sky.occupied(slot);
+	if (s_kind == kToyDimensions)
+		return g_router.dim.occupied(slot);
+	return g_router.inf.occupied(slot);
+}
+
+static u32 key_at(int slot)
+{
+	if (s_kind == kToySkylanders)
+		return sky_key(g_router.sky.figure_id(slot), g_router.sky.figure_variant(slot));
+	if (s_kind == kToyDimensions)
+		return g_router.dim.figure(slot).id;
+	return InfinityBase::figure_number_of(g_router.inf.figure(slot).data);
+}
+
+static void label_for_key(u32 key, char* out, int n)
+{
+	for (int i = 0; i < s_item_count; i++)
+		if (s_items[i].key == key)
+		{
+			item_label(s_items[i], out, n);
+			return;
+		}
+	_snprintf(out, n, "a figure");
+	out[n - 1] = 0;
+}
+
+static void note_placed(int slot)
+{
+	if (slot >= 0 && slot < kMaxSpots)
+		s_spot_age[slot] = ++s_age_clock;
+}
+
+static void load_at(const BYTE* data, const char* path, int slot)
+{
+	if (s_kind == kToySkylanders)
+		g_router.sky.load(data, path); // the freed spot is the only free one
+	else if (s_kind == kToyDimensions)
+		g_router.dim.load(data, path, slot);
+	else
+		g_router.inf.load(data, path, slot);
+}
+
+// Puts a waiting piece on once its time has come (or straight away if `now`).
+static bool finish_pending(bool now)
+{
+	if (!s_pending.active)
+		return false;
+	if (!now && (int)(GetTickCount() - s_pending.due) < 0)
+		return false;
+	EnterCriticalSection(&g_lock);
+	const bool free_spot = !spot_taken(s_pending.slot);
+	if (free_spot)
+		load_at(s_pending.data, s_pending.path, s_pending.slot);
 	LeaveCriticalSection(&g_lock);
-	return ok;
+	s_pending.active = false;
+	if (free_spot)
+	{
+		note_placed(s_pending.slot);
+		footer(s_pending.created ? "Made and placed %s" : "Placed %s", s_pending.label);
+	}
+	else
+		footer("%s not placed: its spot was filled meanwhile", s_pending.label);
+	return true;
+}
+
+// Puts the figure in `data` on the first free spot it can use; if they're
+// all taken, takes the longest-placed one off and queues the new one for
+// that spot. Returns 1 placed, 2 swapping, 0 not possible.
+static int place_data(const BYTE* data, const char* path, const char* label, bool created)
+{
+	int spots[kMaxSpots];
+	const int n = spots_for(data, spots);
+	if (n == 0)
+		return 0;
+	EnterCriticalSection(&g_lock);
+	int chosen = -1;
+	for (int i = 0; i < n && chosen < 0; i++)
+		if (!spot_taken(spots[i]))
+			chosen = spots[i];
+	if (chosen >= 0)
+	{
+		load_at(data, path, chosen);
+		LeaveCriticalSection(&g_lock);
+		note_placed(chosen);
+		return 1;
+	}
+	int oldest = spots[0];
+	for (int i = 1; i < n; i++)
+		if (s_spot_age[spots[i]] < s_spot_age[oldest])
+			oldest = spots[i];
+	const u32 old_key = key_at(oldest);
+	LeaveCriticalSection(&g_lock);
+
+	flush_dirty_figures(); // save its progress first
+	EnterCriticalSection(&g_lock);
+	if (s_kind == kToySkylanders)
+		g_router.sky.remove(oldest);
+	else if (s_kind == kToyDimensions)
+		g_router.dim.remove(oldest);
+	else
+		g_router.inf.remove(oldest);
+	LeaveCriticalSection(&g_lock);
+
+	s_pending.active = true;
+	s_pending.due = GetTickCount() + kSwapDelayMs;
+	s_pending.slot = oldest;
+	s_pending.created = created;
+	strncpy(s_pending.path, path, sizeof(s_pending.path) - 1);
+	s_pending.path[sizeof(s_pending.path) - 1] = 0;
+	strncpy(s_pending.label, label, sizeof(s_pending.label) - 1);
+	s_pending.label[sizeof(s_pending.label) - 1] = 0;
+	memcpy(s_pending.data, data, figure_size(s_kind));
+
+	char old_label[64];
+	label_for_key(old_key, old_label, sizeof(old_label));
+	footer2("Swapping: %s off, %s on", old_label, label);
+	return 2;
 }
 
 static void toggle(const GridItem& it)
 {
 	char label[64];
 	item_label(it, label, sizeof(label));
+	finish_pending(true); // one swap at a time
 
 	const int slot = slot_with(s_kind, it.key);
 	if (slot >= 0)
@@ -484,14 +641,11 @@ static void toggle(const GridItem& it)
 		return;
 	}
 	flush_dirty_figures();
-	if (!place_data(data, path))
-	{
-		footer(s_kind == kToySkylanders ? "The portal is full - take %s or another off" :
-			s_kind == kToyDimensions ? "The toy pad is full (%s not placed)" :
-			"That spot on the base is taken (%s)", label);
-		return;
-	}
-	footer(created ? "Made and placed %s" : "Placed %s", label);
+	const int placed = place_data(data, path, label, created);
+	if (placed == 0)
+		footer("%s has no spot it can go on", label);
+	else if (placed == 1)
+		footer(created ? "Made and placed %s" : "Placed %s", label);
 }
 
 // ---- drawing ----------------------------------------------------------------
@@ -688,6 +842,12 @@ static DWORD WINAPI grid_thread(LPVOID)
 		return 0;
 	}
 	s_kind = kind;
+	if (s_age_kind != kind)
+	{
+		memset(s_spot_age, 0, sizeof(s_spot_age));
+		s_age_kind = kind;
+	}
+	s_pending.active = false;
 	build_items(kind);
 	s_menu.reset(s_item_count);
 	s_footer[0] = 0;
@@ -757,6 +917,8 @@ static DWORD WINAPI grid_thread(LPVOID)
 			toggle(s_items[s_menu.cursor()]);
 			shown = render(false) + 1; // redraw
 		}
+		if (finish_pending(false))
+			shown = render(false) + 1;
 		const u32 now = render(false);
 		if (now != shown)
 		{
@@ -769,6 +931,13 @@ static DWORD WINAPI grid_thread(LPVOID)
 		Sleep(1);
 	}
 
+	// A swap still waiting goes on before the grid closes.
+	if (s_pending.active)
+	{
+		while ((int)(GetTickCount() - s_pending.due) < 0)
+			Sleep(10);
+		finish_pending(true);
+	}
 	close_grid("B");
 	g_menu_open = false;
 	s_open = false;

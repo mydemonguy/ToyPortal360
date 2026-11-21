@@ -1114,6 +1114,30 @@ static int run_grid(u32 (*entry)(void*, u32, void*))
 	CHECK(count_files("TPHDD:\\ToyPortal\\Dimensions") == 2);
 	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 2 && rp[7] == 0); /* centre taken: left pad */
 
+	/* Fill the toy pad (7 spots): Gandalf, Wyldstyle, Aquaman, Benny, Bart. */
+	static const struct { u16 move; const char* name; } fill[5] = {
+		{0x0008, "Gandalf"}, {0x0008, "Wyldstyle"}, {0x0008, "Aquaman"},
+		{0x0002, "Benny"}, {0x0004, "Bart Simpson"}};
+	for (int i = 0; i < 5; i++)
+	{
+		char want[64];
+		press(fill[i].move, 120);
+		press(0x1000, 120);
+		snprintf(want, sizeof(want), "Grid: Made and placed %s", fill[i].name);
+		CHECK(wait_log(want, 3000));
+		CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[7] == 0);
+	}
+	/* An eighth (Bane) swaps out the one on longest: the page-2 figure on the
+	 * centre pad. The game sees it leave, then Bane arrive on that pad. */
+	press(0x0004, 120);
+	press(0x1000, 120);
+	CHECK(wait_log("Grid: Swapping: ", 3000));
+	CHECK(log_contains(" off, Bane on"));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 1);
+	CHECK(wait_log("Grid: Made and placed Bane", 3000));
+	CHECK(draw_read(rp) == 32 && rp[2] == 0x56 && rp[4] == 1 && rp[7] == 0);
+	CHECK(!log_contains("toy pad is full"));
+
 	/* B closes it: the game gets the controller back and its frames win. */
 	press(0x2000, 120);
 	CHECK(wait_log("Grid closed (B)", 3000));
