@@ -3,9 +3,9 @@ ToyPortal360 for Peer Pressure - setup
 
 Lets LEGO Dimensions, Disney Infinity and Skylanders on an Xbox 360 running
 Peer Pressure use virtual figures instead of a real Toy Pad, base or portal.
-Tested on a console with LEGO Dimensions (Games on Demand, title ID 5752084B)
-and Disney Infinity 3.0 (42560832). Skylanders Imaginators (41560930) finds
-the portal; wait until you're past its title screen before opening the menu.
+Tested on a console with LEGO Dimensions (Games on Demand, title ID 5752084B),
+Disney Infinity 3.0 (42560832) and Skylanders Imaginators (41560930). In
+Imaginators, wait until you're past the title screen before opening the menu.
 
 What you need
 -------------
@@ -76,7 +76,9 @@ Hold LB + RB + Y for a grid of every figure in the game.
   B               close
 Figures on the pad are green. If every spot a piece can use is taken, A
 takes off the one that has been on longest and puts the new one there.
-Tested on a console in LEGO Dimensions and Disney Infinity 3.0.
+Tested on a console in LEGO Dimensions, Disney Infinity 3.0 and Skylanders
+Imaginators. If the game shows through it, add  grid_size = small  to
+toyportal.ini for a smaller, more solid grid.
 
 Adding your own pictures
 ------------------------
